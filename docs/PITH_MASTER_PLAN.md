@@ -214,7 +214,7 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 - `MEMORY/` — долговременные заметки и knowledge.
 - `logs/*.log` — budget, routing, evolution, incidents.
 - `skills/*.md` + `skills/index.json` — mined skills.
-- Ключевые документы: `docs/MANIFESTO.md`, `docs/PRODUCT_DOCTRINE.md`, `docs/ARCHITECTURE_NORTHSTAR.md`, `docs/architecture/PITH_KERNEL.md`, `PITH_CHANGELOG.md`.
+- Ключевые документы: `docs/MANIFESTO.md`, `docs/PRODUCT_DOCTRINE.md`, `docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md`, `docs/architecture/PITH_KERNEL.md`, `PITH_CHANGELOG.md`.
 
 ---
 
