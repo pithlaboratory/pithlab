@@ -16,7 +16,6 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,22 +32,25 @@ class AssembledContext:
     mode: RuntimeMode
     system_prompt: str
     workspace_id: Optional[str] = None
+    request_context: str = ""
     recent_messages: List[Dict[str, str]] = field(default_factory=list)
     summary: Optional[str] = None
+    task_context: str = ""
     memory_context: str = ""
     artifact_context: str = ""
-    task_context: str = ""
 
     def to_prompt_string(self) -> str:
         """
-        Собирает финальный промпт согласно приоритетам контекста:
+        Собирает финальный промпт согласно runtime-first приоритетам контекста:
         1. System / runtime policy
         2. Workspace identity
         3. Mode instructions
-        4. Summary
-        5. Memory
-        6. Task / artifacts
-        7. Recent conversation
+        4. Current request
+        5. Current task context
+        6. Conversation summary
+        7. Relevant memory
+        8. Related artifacts / documents
+        9. Recent conversation
         """
         parts: List[str] = []
 
@@ -81,24 +83,29 @@ class AssembledContext:
                 "Сохраняй continuity, но не перегружай ответ нерелевантным историческим контекстом."
             )
 
-        # 4. Conversation summary
+        # 4. Current request
+        if self.request_context:
+            parts.append(f"Current user request:\n{self.request_context}")
+
+        # 5. Current task context
+        if self.task_context:
+            parts.append(f"Current task context:\n{self.task_context}")
+
+        # 6. Conversation summary
         if self.summary:
             parts.append(
                 f"Previous conversation summary (background only):\n{self.summary}"
             )
 
-        # 5. Memory context
+        # 7. Relevant memory
         if self.memory_context:
             parts.append(f"Relevant memory:\n{self.memory_context}")
 
-        # 6. Task / artifact context
-        if self.task_context:
-            parts.append(f"Current task context:\n{self.task_context}")
-
+        # 8. Related artifacts / documents
         if self.artifact_context:
             parts.append(f"Related artifacts / documents:\n{self.artifact_context}")
 
-        # 7. Recent messages
+        # 9. Recent messages
         if self.recent_messages:
             history_str = "\n".join(
                 f"{msg.get('role', 'unknown')}: {msg.get('content', '').strip()}"
@@ -205,9 +212,14 @@ class ContextAssembler:
         mode: Optional[RuntimeMode] = None,
         recent_history: Optional[List[Dict[str, str]]] = None,
         system_prompt: str = "",
+        **kwargs: Any,
     ) -> AssembledContext:
         """
         Собирает контекст для planner/router/model call.
+
+        **kwargs сохранён для мягкой совместимости с call-sites,
+        которые могут временно пробрасывать дополнительные параметры
+        (например, session_id) до формального расширения сигнатуры.
         """
         detected_mode = mode or self._detect_mode(query)
 
@@ -231,6 +243,8 @@ class ContextAssembler:
         else:
             recent_messages = recent_history
 
+        request_context = (query or "").strip()
+
         if detected_mode == RuntimeMode.DIAGNOSTICS:
             memory_ctx = self._build_diagnostic_memory(user_id, query, workspace_id)
             artifact_ctx = self._fetch_logs_and_configs(workspace_id, task_id)
@@ -250,11 +264,12 @@ class ContextAssembler:
             mode=detected_mode,
             system_prompt=system_prompt,
             workspace_id=workspace_id,
+            request_context=request_context,
             recent_messages=recent_messages,
             summary=summary,
+            task_context=task_ctx,
             memory_context=memory_ctx,
             artifact_context=artifact_ctx,
-            task_context=task_ctx,
         )
 
     def _detect_mode(self, query: str) -> RuntimeMode:
