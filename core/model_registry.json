@@ -1,0 +1,288 @@
+{
+  "registry_version": "pith-model-stack-2026-04-24",
+  "budget": {
+    "monthly_usd_limit": 30,
+    "soft_limit_usd": 22,
+    "hard_stop_usd": 30,
+    "premium_reserve_usd": 6,
+    "reasoning_reserve_usd": 4
+  },
+  "defaults": {
+    "primary_general": "deepseek_v4_flash",
+    "primary_coder": "kimi_k26",
+    "primary_long_context_coder": "mimo_v2_flash",
+    "primary_reasoner": "deepseek_r1_free",
+    "primary_premium_fallback": "claude_sonnet_4"
+  },
+  "models": {
+    "deepseek_v4_flash": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-v4-flash",
+      "role_tags": ["general", "fast_paid", "routing_target", "analysis", "agent"],
+      "context_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "pricing_per_million": {
+        "input_usd": 0.14,
+        "output_usd": 0.28,
+        "cache_read_usd": 0.028
+      },
+      "strengths": [
+        "cheap paid default",
+        "very long context",
+        "strong general reasoning",
+        "good code",
+        "good agent workloads"
+      ],
+      "weaknesses": [
+        "not the strongest possible coding specialist",
+        "should not replace premium final-check model"
+      ],
+      "routing_priority": 100,
+      "enabled": true
+    },
+    "deepseek_v4_pro": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-v4-pro",
+      "role_tags": ["general", "heavy_analysis", "heavy_code", "long_context", "agent"],
+      "context_tokens": 1000000,
+      "pricing_mode": "higher_than_v4_flash_check_live_before_use",
+      "strengths": [
+        "best DeepSeek general quality",
+        "1M context",
+        "strong for repo-scale synthesis",
+        "strong for difficult agent planning"
+      ],
+      "weaknesses": [
+        "use only when flash underperforms",
+        "higher spend risk"
+      ],
+      "routing_priority": 85,
+      "enabled": true
+    },
+    "deepseek_r1_free": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-r1:free",
+      "role_tags": ["reasoning", "planner", "validator", "fallback_reasoner"],
+      "pricing_per_million": {
+        "input_usd": 0,
+        "output_usd": 0
+      },
+      "strengths": [
+        "very strong reasoning",
+        "good for decomposition",
+        "good for architecture thinking"
+      ],
+      "weaknesses": [
+        "latency",
+        "can overthink",
+        "not ideal for mass user traffic"
+      ],
+      "routing_priority": 70,
+      "enabled": true
+    },
+    "deepseek_r1_paid": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-r1",
+      "role_tags": ["reasoning", "premium_reasoning", "validator"],
+      "pricing_per_million": {
+        "input_usd": 0.70,
+        "output_usd": 2.50
+      },
+      "strengths": [
+        "top reasoning",
+        "good for hard failure recovery",
+        "good for final architecture validation"
+      ],
+      "weaknesses": [
+        "expensive for frequent use",
+        "slower than V4 Flash"
+      ],
+      "routing_priority": 45,
+      "enabled": true
+    },
+    "kimi_k26": {
+      "provider": "openrouter_or_moonshot",
+      "model_id": "moonshot/kimi-k2.6",
+      "role_tags": ["coding", "agentic_coding", "tool_use", "long_horizon_execution"],
+      "context_tokens": 262144,
+      "max_output_tokens": 66000,
+      "pricing_per_million": {
+        "input_usd": 0.745,
+        "output_usd": 4.00
+      },
+      "alt_pricing_note": "some Kimi materials show lower cached/input bands; check route before production commit",
+      "strengths": [
+        "top-tier coding",
+        "strong agentic execution",
+        "good for long tool chains",
+        "good for repo tasks"
+      ],
+      "weaknesses": [
+        "more expensive than DeepSeek V4 Flash",
+        "not ideal as universal default"
+      ],
+      "routing_priority": 95,
+      "enabled": true
+    },
+    "mimo_v2_flash": {
+      "provider": "openrouter",
+      "model_id": "xiaomi/mimo-v2-flash:free",
+      "role_tags": ["coding", "free_coder", "long_context_code", "analysis"],
+      "context_tokens": 256000,
+      "pricing_per_million": {
+        "input_usd": 0,
+        "output_usd": 0
+      },
+      "strengths": [
+        "free coding layer",
+        "large context",
+        "good bugfix and repo reading"
+      ],
+      "weaknesses": [
+        "less predictable than premium code models",
+        "quality variance"
+      ],
+      "routing_priority": 80,
+      "enabled": true
+    },
+    "qwen3_coder_480b": {
+      "provider": "openrouter",
+      "model_id": "qwen/qwen3-coder-480b:free",
+      "role_tags": ["coding", "free_coder", "backup_coder"],
+      "context_tokens": 262000,
+      "pricing_per_million": {
+        "input_usd": 0,
+        "output_usd": 0
+      },
+      "strengths": [
+        "strong free coding",
+        "large context",
+        "cheap experimentation"
+      ],
+      "weaknesses": [
+        "not as stable as paid best-path coding"
+      ],
+      "routing_priority": 78,
+      "enabled": true
+    },
+    "llama33_70b": {
+      "provider": "openrouter",
+      "model_id": "meta-llama/llama-3.3-70b-instruct:free",
+      "role_tags": ["general", "free_general", "chat", "fallback"],
+      "pricing_per_million": {
+        "input_usd": 0,
+        "output_usd": 0
+      },
+      "strengths": [
+        "strong free general model",
+        "good default chat fallback"
+      ],
+      "weaknesses": [
+        "weaker than V4 Flash on difficult tasks"
+      ],
+      "routing_priority": 75,
+      "enabled": true
+    },
+    "claude_sonnet_4": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-sonnet-4",
+      "role_tags": ["premium", "final_answer", "high_stakes", "quality_fallback"],
+      "context_tokens": 1000000,
+      "pricing_per_million": {
+        "input_usd": 3.00,
+        "output_usd": 15.00
+      },
+      "strengths": [
+        "excellent polished final answers",
+        "good high-stakes quality",
+        "strong structured reasoning"
+      ],
+      "weaknesses": [
+        "too expensive for routine use"
+      ],
+      "routing_priority": 20,
+      "enabled": true
+    }
+  },
+    "routing": {
+    "global_policy": {
+      "prefer_free_first": true,
+      "prefer_deepseek_v4_flash_as_default_paid": true,
+      "use_premium_only_for_high_stakes": true,
+      "max_paid_hops_per_request": 2,
+      "max_premium_hops_per_day": 8
+    },
+
+    "lanes": {
+      "chat_fast": "llama33_70b",
+      "chat_default": "deepseek_v4_flash",
+      "chat_premium": "claude_sonnet_4",
+
+      "code_free": "mimo_v2_flash",
+      "code_paid": "kimi_k26",
+
+      "reasoner_free": "deepseek_r1_free",
+      "reasoner_paid": "deepseek_r1_paid"
+    },
+
+    "task_routes": {
+      "simple_chat": ["llama33_70b", "deepseek_v4_flash"],
+      "general_work": ["deepseek_v4_flash", "llama33_70b", "deepseek_v4_pro"],
+      "simple_code": ["qwen3_coder_480b", "mimo_v2_flash", "deepseek_v4_flash"],
+      "heavy_code": ["kimi_k26", "mimo_v2_flash", "deepseek_v4_pro"],
+      "repo_wide_refactor": ["kimi_k26", "deepseek_v4_pro", "mimo_v2_flash"],
+      "planning_reasoning": ["deepseek_r1_free", "deepseek_v4_pro", "deepseek_r1_paid"],
+      "high_stakes_user_reply": ["deepseek_v4_flash", "claude_sonnet_4"],
+      "final_validation": ["deepseek_r1_paid", "claude_sonnet_4"]
+    },
+    "escalation_rules": [
+      {
+        "if": "estimated_prompt_tokens > 120000",
+        "route_to": "deepseek_v4_flash"
+      },
+      {
+        "if": "repo_files_count > 40 OR changed_files_count > 12",
+        "route_to": "kimi_k26"
+      },
+      {
+        "if": "task_type == 'architecture' OR task_type == 'multi_step_planning'",
+        "route_to": "deepseek_r1_free"
+      },
+      {
+        "if": "confidence_score < 0.72 AND user_visible_output == true",
+        "route_to": "deepseek_v4_pro"
+      },
+      {
+        "if": "confidence_score < 0.62 AND answer_is_high_stakes == true",
+        "route_to": "claude_sonnet_4"
+      },
+      {
+        "if": "monthly_spend_usd > 22",
+        "action": "disable_claude_sonnet_4_and_kimi_for_noncritical_tasks"
+      },
+      {
+        "if": "monthly_spend_usd > 27",
+        "action": "freeze_all_paid_except_deepseek_v4_flash_for_critical_requests"
+      }
+    ]
+  },
+  "observability": {
+    "track": [
+      "latency_ms",
+      "prompt_tokens",
+      "completion_tokens",
+      "cache_hit_ratio",
+      "cost_usd",
+      "tool_calls_count",
+      "fallback_count",
+      "escalation_count",
+      "self_rated_confidence"
+    ],
+    "alerts": {
+      "cost_spike_daily_usd": 2.5,
+      "kimi_overuse_calls_per_day": 20,
+      "premium_overuse_calls_per_day": 8,
+      "r1_latency_p95_ms": 35000
+    }
+  }
+}

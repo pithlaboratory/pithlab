@@ -1,0 +1,62 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Secrets / environment
+.env
+*.env
+
+# Logs
+logs/
+*.log
+
+# Databases / runtime state
+*.db
+episodes.db
+data/*.db
+data/cache/
+data/metrics/
+data/migrations/
+data/mining/
+data/traces/
+
+# Generated vector / index artifacts
+data/chroma/
+
+# Runtime memory / local state
+memory
+
+# Backups / broken / temp copies
+*.bak
+*.backup
+*.broken
+*.bak.*
+*.broken.*
+config.yaml.bak.*
+
+# Editor / local tooling
+.continue/
+.idea/
+.vscode/
+
+# Git backup / nested git
+.git_backup_before_clean_push/
+.git/
+
+# Archives / dumps / snapshots
+*.tar.gz
+pith_v5_code_only.tar.gz
+pith_v5_dump.txt
+pith_files_snapshot.txt
+test_result.txt
+
+# Generated / mined knowledge corpus
+skills/mined/
+data/*.db.bak.*

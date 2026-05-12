@@ -1,0 +1,3 @@
+
+
+{'print("-': 50, 'try': 'Вызываем planner с запросом', 'goal_model': 'n result:\n            print(', '="*50)\n            print(': 'АЙДЕНО goal_alignment_note в ответе:', 'result["goal_model': 'print(json.dumps(goal_model', 'else': 'print(', 'goal_alignment_note': 'n result:\n            print(', 'print(result["goal_alignment_note': 'else:\n            print(', 'ответе': 'except Exception as e:\n        print(f', 'теста': {'__main__': 'asyncio.run(test_diagnostics())'}}

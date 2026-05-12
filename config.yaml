@@ -1,0 +1,518 @@
+# Pith v5 — Core Configuration
+# Версия: 2.2.1 | Статус: Production Runtime (Core Stabilization Phase)
+# Архитектурные принципы: Continuity • Accumulation • Governance • Self-Evolution
+
+telegram:
+  token: ""                            # Загружается из .env / core.secrets
+  owner_chat_id: ""                    # Загружается из .env / core.secrets
+  webhook:
+    enabled: false
+    url: ""
+    port: 8443
+    listen: "0.0.0.0"
+  polling:
+    enabled: true
+    drop_pending_updates: true
+    timeout_seconds: 30
+    allowed_updates: ["message", "callback_query", "edited_message"]
+
+interface:
+  show_prefix: true
+  prefix_text: "Pith"
+  voice_mode: "runtime"
+  known_prefixes_to_strip:
+    - "🎭 Viktor Vaughn:"
+    - "Viktor Vaughn:"
+    - "Pith:"
+    - "pith:"
+    - "PITH:"
+  loading_profile: "minimal"
+  loading_states:
+    minimal:
+      - "thinking…"
+      - "routing…"
+      - "responding…"
+    detailed:
+      - "assembling context…"
+      - "selecting models…"
+      - "orchestrating agents…"
+      - "synthesizing answer…"
+  loading_step_delays: [1.5, 3.0]
+  typing_pulse_sec: 2.5
+  system_messages:
+    start: |
+      Pith online.
+
+      Ready for continuous work.
+    empty: |
+      No input received.
+    model_unavailable: |
+      Model access unavailable. Check runtime configuration.
+    orchestration_failed: |
+      Execution failed at orchestration stage. Review logs.
+    request_failed: |
+      Request could not be completed. Review runtime logs.
+    budget_warning: |
+      ⚠️ Budget warning: switching to cost-optimized models.
+    about: |
+      Pith — операционная среда для непрерывной работы.
+
+      Continuity • Memory • Execution • Evolution
+
+budget:
+  monthly_usd: 30.0
+  monthly_soft_limit: 22.0
+  daily_soft_limit: 0.80
+  daily_hard_limit: 2.50
+  warning_threshold: 0.80
+  hard_stop: true
+  alert_channels:
+    - "telegram_owner"
+    - "log_file"
+
+limits:
+  max_tokens_default: 8192
+  max_tokens_coding: 12000
+  max_tokens_agent: 12000
+  max_tokens_long_context: 16000
+  max_tokens_premium: 10000
+  max_input_chars: 8000
+
+temperatures:
+  default: 0.7
+  coding: 0.2
+  agent: 0.5
+  long_context: 0.2
+  premium: 0.3
+
+requests:
+  timeout_seconds: 90
+  max_retries: 3
+  retry_backoff_base: 2
+  exponential_backoff_cap: 30
+
+routing:
+  default_mode: "core"
+  allow_free_fallback: true
+  allow_premium_fallback: false
+  premium_requires_explicit: true
+  global_policy:
+    prefer_free_first: false
+    default_paid_model: "deepseek/deepseek-v4-flash"
+    max_paid_hops_per_request: 3
+    max_premium_hops_per_day: 8
+    fallback_order: ["free", "core", "coder", "agent", "long_context"]
+  long_context_trigger_chars: 12000
+  long_context_trigger_tokens_est: 8000
+  coding_trigger_keywords:
+    - "код"
+    - "code"
+    - "python"
+    - "bash"
+    - "sql"
+    - "refactor"
+    - "bug"
+    - "patch"
+    - "fix"
+    - "traceback"
+    - "stacktrace"
+    - "ошибка"
+    - "исправь"
+    - "рефактор"
+  agent_trigger_keywords:
+    - "пошагово"
+    - "спланируй"
+    - "план"
+    - "strategy"
+    - "research"
+    - "workflow"
+    - "agent"
+    - "многошаговый"
+  premium_trigger_keywords:
+    - "critical"
+    - "production incident"
+    - "high stakes"
+    - "arbiter"
+    - "критично"
+    - "сложнейший"
+    - "финальное решение"
+  task_routes:
+    simple_chat: "free"
+    summarize: "free"
+    classification: "free"
+    reasoning: "core"
+    general: "core"
+    architecture: "core"
+    coding: "coder"
+    debug: "coder"
+    patch: "coder"
+    agent_planning: "agent"
+    research_flow: "agent"
+    long_context: "long_context"
+    premium_analysis: "premium"
+
+models:
+  fallback_chains:
+    core:
+      - "deepseek/deepseek-v4-flash"
+      - "deepseek/deepseek-chat-v3.1"
+      - "qwen/qwen3-32b"
+      - "meta-llama/llama-3.3-70b-instruct:free"
+    coder:
+      - "deepseek/deepseek-v4-flash"
+      - "qwen/qwen3-coder-plus"
+      - "qwen/qwen3-coder:free"
+    agent:
+      - "moonshotai/kimi-k2.6"
+      - "moonshotai/kimi-k2.5"
+      - "deepseek/deepseek-v4-flash"
+  free:
+    - id: "qwen/qwen3-coder:free"
+      budget_weight: 0.0
+      role: "free_coder_primary"
+      context_window: 32768
+    - id: "meta-llama/llama-3.3-70b-instruct:free"
+      budget_weight: 0.0
+      role: "free_reasoning_alt"
+      context_window: 8192
+  core:
+    - id: "deepseek/deepseek-v4-flash"
+      budget_weight: 1.0
+      role: "primary_general"
+      context_window: 128000
+      strengths: ["speed", "reasoning", "code"]
+    - id: "deepseek/deepseek-chat-v3.1"
+      budget_weight: 1.08
+      role: "stable_general_fallback"
+      context_window: 128000
+    - id: "qwen/qwen3-32b"
+      budget_weight: 1.12
+      role: "reasoning_general_alt"
+      context_window: 32768
+  coder:
+    - id: "deepseek/deepseek-v4-flash"
+      budget_weight: 1.0
+      role: "fast_coder_primary"
+    - id: "qwen/qwen3-coder-plus"
+      budget_weight: 1.08
+      role: "deep_coder_fallback"
+      strengths: ["refactoring", "debugging", "multi-file"]
+    - id: "moonshotai/kimi-k2.6"
+      budget_weight: 1.12
+      role: "long_horizon_coder"
+      context_window: 256000
+    - id: "qwen/qwen3-coder:free"
+      budget_weight: 0.0
+      role: "free_coder_backup"
+  agent:
+    - id: "moonshotai/kimi-k2.6"
+      budget_weight: 1.0
+      role: "primary_agentic"
+      strengths: ["planning", "research", "long-context"]
+    - id: "moonshotai/kimi-k2.5"
+      budget_weight: 1.05
+      role: "agentic_fallback"
+    - id: "deepseek/deepseek-v4-flash"
+      budget_weight: 1.08
+      role: "general_agent_fallback"
+  long_context:
+    - id: "deepseek/deepseek-v4-flash"
+      budget_weight: 1.0
+      role: "primary_long_context"
+      context_window: 128000
+    - id: "deepseek/deepseek-v4-pro"
+      budget_weight: 1.25
+      role: "high_depth_long_context"
+      context_window: 128000
+    - id: "moonshotai/kimi-k2.6"
+      budget_weight: 1.18
+      role: "long_context_agentic"
+      context_window: 256000
+  premium:
+    - id: "anthropic/claude-sonnet-4"
+      budget_weight: 2.0
+      role: "highest_stakes_reasoning"
+      context_window: 200000
+      strengths: ["complex-reasoning", "safety", "nuance"]
+    - id: "deepseek/deepseek-v4-pro"
+      budget_weight: 1.55
+      role: "premium_coding_reasoning"
+    - id: "moonshotai/kimi-k2.6"
+      budget_weight: 1.35
+      role: "premium_agentic_alt"
+
+cache:
+  enabled: false
+  ttl_seconds: 3600
+  max_entries: 1000
+  path: "data/cache/router_cache.json"
+  key_components: ["prompt", "model", "mode", "temperature"]
+
+metrics:
+  enabled: true
+  path: "data/metrics/router_stats.json"
+  persist_llm_calls: true
+  persist_router_decisions: true
+  flush_interval_seconds: 60
+  include_costs: true
+  include_latencies: true
+  include_token_counts: true
+
+traces:
+  enabled: true
+  path: "data/traces/"
+  persist_router_decisions: true
+  persist_llm_calls: true
+  persist_context_assembly: true
+  max_trace_age_days: 7
+  include_prompts: false
+  include_responses: true
+
+memory:
+  enabled: true
+  episodes_db_path: "data/episodes.db"
+  recent_episodes_limit: 10
+  retention:
+    max_episodes_per_user: 10000
+    auto_archive_after_days: 90
+    archived_db_path: "data/archive/episodes_archive.db"
+    purge_archived_after_days: 365
+  vector_memory_enabled: true
+  vector_store_path: "data/vector_store"
+  embedding_model: "qwen/qwen3-embed:free"
+  auto_context_build: true
+  auto_save_user_messages: true
+  auto_save_assistant_messages: true
+  auto_extract_tasks: true
+  auto_link_artifacts: true
+  workspace_scoped_recall: true
+  cross_workspace_sharing: false
+  failure_mining:
+    enabled: true
+    thresholds:
+      low_priority: 0.3
+      high_priority: 0.5
+      recurring_failure: 2
+    batch_size: 10
+    auto_patch_generation: false
+
+context_assembler:
+  enabled: true
+  mode_detection:
+    auto: true
+    default_mode: "normal"
+    keywords:
+      deep:
+        - "архитектура pith"
+        - "архитектура системы"
+        - "проанализируй архитектуру pith"
+        - "как дела у pith"
+        - "статус pith"
+        - "диагностика pith"
+        - "разбери архитектуру pith"
+      analysis:
+        - "диагностика"
+        - "trace"
+        - "почему"
+        - "что пошло не так"
+  history_filter:
+    enabled: true
+    filter_meta_noise: true
+    meta_noise_keywords:
+      - "оркестратор"
+      - "стратег"
+      - "критик"
+      - "исследователь"
+      - "кодер"
+      - "телескоп"
+      - "мета-рефлексия"
+      - "failureminer"
+      - "patchplanner"
+    max_recent_messages: 10
+    include_system_messages: false
+  compression:
+    enabled: false
+    method: "summarization"
+    model: "qwen/qwen3-32b"
+
+logging:
+  level: "INFO"
+  json_logs: false
+  log_prompts: false
+  log_model_choices: true
+  log_costs: true
+  log_router_decisions: true
+  log_memory_operations: false
+  log_file: "logs/pith.log"
+  max_log_size_mb: 50
+  rotate_logs: true
+
+persona:
+  name: "Pith"
+  system_prompt: |
+    Ты — Pith.
+
+    Pith — рабочий интеллектуальный слой для анализа, проектирования и непрерывной работы.
+    Не персонаж и не декоративный чат-бот. Это инструмент для решения задач.
+
+    Как отвечать:
+    - На простые вопросы отвечай просто, коротко и естественно.
+    - На сложные запросы (анализ, архитектура, план, диагностика) отвечай структурно и по существу.
+    - Отвечай сразу на вопрос. Не пиши "если хочешь, могу рассказать", "могу помочь", "могу сформулировать".
+    - Если данных мало или чего-то нельзя подтвердить, говори это прямо.
+    - Не раздувай ответ без необходимости.
+
+    Строгие запреты:
+    - Не показывай внутренние статусы: "executing", "task state", "задача принята", "выполняю пайплайн".
+    - Не имитируй chain-of-thought, внутренний монолог, скрытый план или служебную оркестрацию.
+    - Не начинай обычный ответ с блоков "Анализ", "Шаги", "Решение", если пользователь не просил именно такую форму.
+    - Не подменяй простой разговор системным self-analysis.
+    - Не выдавай roadmap за production reality.
+
+    Что реально работает сейчас:
+    - Router — маршрутизация запросов по model lanes.
+    - Memory — episodic storage, профили, базовая continuity.
+    - Context Assembler — сборка релевантного контекста из истории и памяти.
+    - Budget Manager — контроль затрат и переключение на более дешёвые модели.
+    - Traces — базовое логирование запросов, решений и costs.
+
+    Что НЕ надо выдавать за production:
+    - FailureMiner, PatchPlanner, Auto-rollout — запланированы, но не активны.
+    - RuntimePlanner, Evaluator, TraceService — частично реализованы, но не являются надёжной production-реальностью.
+    - Multi-agent orchestration с именованными агентами — не текущая production-функция.
+    - Vector memory / embeddings — могут быть включены в конфиге, но не должны подаваться как зрелая надёжная capability без подтверждения по факту.
+
+    Если пользователь спрашивает про архитектуру Pith:
+    - Отвечай честно и конкретно, без маркетингового пафоса.
+    - Разделяй: что работает сейчас, что частично собрано, что только запланировано.
+    - Для production-описания опирайся на текущий базовый цикл:
+      LLM → response → memory → trace.
+
+    Стиль:
+    - Русский язык.
+    - Краткость по умолчанию.
+    - Глубина только там, где она действительно нужна.
+    - Тон спокойный, собранный, практичный.
+
+evolution:
+  enabled: true
+  failure_miner:
+    enabled: true
+    thresholds:
+      low_priority: 0.3
+      high_priority: 0.5
+      recurring_failure: 2
+    batch_process_interval_minutes: 30
+    max_batch_size: 20
+    output_path: "data/evolution/failure_reports/"
+  patch_planner:
+    enabled: false
+    model_for_patch_generation: "deepseek/deepseek-v4-flash"
+    approval:
+      method: "telegram"
+      notify_owner: true
+      timeout_hours: 24
+      allow_auto_approve_for_low_risk: false
+      risk_classification:
+        low:
+          - "config_value_change"
+          - "prompt_typo_fix"
+        medium:
+          - "new_keyword_in_routing"
+          - "memory_retention_change"
+        high:
+          - "core_logic_change"
+          - "new_model_integration"
+    auto_rollout_after_approval: false
+  rollout:
+    strategy: "canary"
+    canary_percentage: 10
+    rollback_on_failure_rate: 0.2
+    metrics_to_monitor:
+      - "eval_score_avg"
+      - "user_feedback_ratio"
+      - "error_rate"
+  versioning:
+    enabled: true
+    path: "data/evolution/versions/"
+    auto_tag_on_patch: true
+    keep_last_n_versions: 10
+
+workspaces:
+  enabled: true
+  default_workspace_template: "personal"
+  templates:
+    personal:
+      memory_retention_days: 30
+      artifact_retention_days: 90
+      allow_cross_workspace_search: false
+    project:
+      memory_retention_days: 180
+      artifact_retention_days: 365
+      allow_cross_workspace_search: true
+    ephemeral:
+      memory_retention_days: 1
+      artifact_retention_days: 1
+      auto_delete_on_idle_hours: 24
+
+security:
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 30
+    requests_per_hour: 200
+    burst_allowance: 10
+  input_sanitization:
+    enabled: true
+    max_recursion_depth: 5
+    block_prompt_injection: true
+  output_filtering:
+    enabled: false
+    block_sensitive_patterns: false
+
+governance:
+  cognitive_budget:
+    max_input_chars: 8000
+  audit_trail:
+    enabled: true
+    log_admin_actions: true
+    log_model_switches: true
+    log_budget_decisions: true
+  compliance:
+    data_retention_days: 90
+    anonymize_user_data: false
+    export_on_request: true
+
+tools:
+  web_search:
+    enabled: true
+    provider: "tavily"
+    max_results: 5
+    search_depth: "basic"
+  code_execution:
+    enabled: false
+    sandbox: "docker"
+    timeout_seconds: 30
+  file_operations:
+    enabled: true
+    allowed_extensions: [".txt", ".md", ".py", ".json", ".yaml"]
+    max_file_size_mb: 10
+
+health:
+  enabled: true
+  endpoint: "/health"
+  checks:
+    - "database_connection"
+    - "vector_store_connection"
+    - "router_api_availability"
+    - "budget_status"
+  alert_on_failure: true
+  alert_cooldown_minutes: 5
+
+monitoring:
+  prometheus:
+    enabled: false
+    port: 9090
+    metrics_prefix: "pith_"
+  uptime_robot:
+    enabled: false
+    endpoint: "/ping"

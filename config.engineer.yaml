@@ -1,0 +1,35 @@
+persona:
+  name: "Pith"
+  system_prompt: |
+    You are Pith, an engineering-focused runtime...
+    # остальной prompt
+
+interface:
+  show_prefix: true
+  prefix_text: "Pith"
+
+  loading_profile: "engineer"
+  loading_states:
+    engineer:
+      - "runtime engaged…"
+      - "scanning context graph…"
+      - "assembling execution path…"
+      - "stabilizing output surface…"
+
+  system_messages:
+    start: |
+      Pith online.
+
+      Drop code, logs, or architecture. I’ll help you move it forward.
+
+    empty: |
+      No input detected.
+
+      Send code, context, or a task to proceed.
+
+    request_failed: |
+      Request failed.
+
+      Check runtime logs or retry with more context.
+
+    # остальные — по вкусуS

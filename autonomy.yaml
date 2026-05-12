@@ -1,0 +1,26 @@
+mode: "suggest_only"
+rings:
+  owner: 0
+  canary: 1
+  full: 2
+thresholds:
+  min_confidence: 0.85
+  max_error_rate_increase: 5.0
+  max_latency_p95_increase: 20.0
+  max_cost_increase_percent: 10.0
+  canary_observation_hours: 24
+safe_autopatch_targets:
+  components:
+    - "persona"
+    - "router_policy"
+    - "memory_policy"
+  tools_allowed: false
+blocked_targets:
+  components:
+    - "telegram_bot"
+    - "core"
+    - "database_schema"
+require_approval_always:
+  - "tool_addition"
+  - "model_change"
+  - "budget_policy_change"
