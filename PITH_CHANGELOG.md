@@ -1,6 +1,4 @@
-# Создаём полный обновлённый PITH_CHANGELOG.md с добавлением entry за 2026-05-07
-
-content = """# PITH CHANGELOG
+# PITH CHANGELOG
 
 Этот файл фиксирует значимые изменения в разработке, инфраструктуре, архитектуре и workflow Pith Runtime.
 
@@ -8,6 +6,45 @@ content = """# PITH CHANGELOG
 - Это не manifesto и не doctrine.
 - Здесь пишем факты изменений, решений и сдвигов фокуса.
 - Любое нетривиальное изменение в runtime, routing, memory, governance, interfaces или tooling должно быть отражено здесь.
+
+---
+
+## 2026-05-12
+
+### TraceStore v1 — minimal task-level backbone
+- Added minimal `TraceStore v1` backbone for task-level observability.
+- Introduced new SQLite table `task_traces` in `data/episodes.db`.
+- Implemented new module:
+  - `core/observability/trace_store.py`
+- Integrated task lifecycle tracing into `core/services/task_service.py`:
+  - `create_task()` → `task_started(task_id, workspace_id)`
+  - `update_status(... completed ...)` → `task_finished(task_id, duration_ms)`
+  - `update_status(... failed/cancelled ...)` → `task_failed(task_id, error_type, duration_ms)`
+- Scope intentionally kept minimal:
+  - no changes to existing tables,
+  - no router-level trace wiring,
+  - no per-LLM-call spans,
+  - no per-agent spans,
+  - no evaluator score wiring in this phase.
+- Verified with smoke test:
+  - task created,
+  - status moved through `executing` → `completed`,
+  - corresponding row appeared in `task_traces`,
+  - `status='ok'`,
+  - `workspace_id` recorded,
+  - `duration_ms` non-null.
+- Commit/push completed as isolated minimal patch:
+  - `Add minimal task trace backbone`
+
+### Engineering significance
+- This is the first concrete implementation step for structured observability beyond existing `episodes.db` / `llm_calls` / `failure_cases` baseline.
+- Task-level trace backbone now exists as a reversible production-safe first phase.
+- Future observability expansion remains deferred:
+  - per-LLM-call trace,
+  - per-agent spans,
+  - evaluator score linkage,
+  - trace query/read API,
+  - dashboards / analytics.
 
 ---
 
@@ -155,4 +192,3 @@ When updating this file:
   - affected component,
   - risk level,
   - rollback path if relevant.
-"""
