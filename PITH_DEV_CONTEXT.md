@@ -21,7 +21,7 @@ Core positioning:
 
 ---
 
-## 2. Current status (2026-05-07)
+## 2. Current status (2026-05-12)
 
 ### Baseline
 - ✅ `v1.0` baseline is stable enough to serve as the current production/runtime baseline.
@@ -31,7 +31,10 @@ Core positioning:
 
 ### In progress
 - 🟡 Real implementations of agents (`tera`, `hex`, `coda`) instead of thin bridge/stub behaviour.
-- 🟡 TraceStore / observability expansion.
+- 🟢 TraceStore v1 (task-level backbone) — implemented:
+  - `task_traces` table in `episodes.db`
+  - `TaskService` writes `task_started` / `task_finished` / `task_failed`
+- 🟡 TraceStore v1.1+ — per-LLM-call and per-agent spans (deferred).
 - 🟡 `PithEval v0.1` dataset.
 - 🟡 CLI `pith ask/dev/incident`.
 
@@ -75,10 +78,11 @@ Core positioning:
    - Reduce dummy/stub behaviour.
    - Make outputs structured and synthesis-friendly.
 
-2. **TraceStore + observability**
-   - Full cost attribution per lane and per agent.
-   - Structured logging for LLM calls and task steps.
-   - Better production diagnosis.
+2. **TraceStore + observability expansion**
+   - Build on top of implemented task-level backbone.
+   - Add cost attribution per lane and per agent.
+   - Add structured logging for LLM calls and task steps.
+   - Improve production diagnosis.
 
 3. **PithEval v0.1**
    - 30–50 ground-truth tasks.
@@ -150,7 +154,7 @@ Every meaningful change should avoid pushing Pith toward:
 Before making major changes, align with:
 
 - `MANIFESTO.md`
-- `PRODUCTDOCTRINE.md`
+- `PRODUCT_DOCTRINE.md`
 - `MASTER_PLAN.md`
 - `AGI_POSITION.md`
 - `EVOLUTION.md`
@@ -167,13 +171,13 @@ These components are **already in place** and must remain stable:
 
 - **Router** (`router.py`) — model lane selection, fallback, budget enforcement, provider switching
 - **RuntimePlanner** (`planner.py`) — task_type detection, direct vs orchestrated path, context assembly integration
-- **Task/Artifact/Trace substrate** — canonical `TaskRecord`, `ArtifactRecord`, `Trace` entities as state layer
+- **Task/Artifact substrate** — canonical `TaskRecord`, `ArtifactRecord`; trace layer is now entering Phase 1
 - **Viktor production path** (`telegram_bot.py`) — the only critical live interface right now
 - **Evaluator** (`evaluator.py`) — persona coherence, context use, disclaimer detection, failure scoring
 - **Memory Manager** (`manager.py`) — episodes, vector memory, user profiles, `save_episode` / `get_recent_context`
 - **Orchestrator bridge** (`orchestrator.py`) — modular agent dispatch, parallel execution, synthesis
 - **Evolution scaffolding** — `FailureMiner`, `PatchPlanner`, `SkillCompiler` (architectural presence, not full loop yet)
-- **Observability baseline** — `episodes.db`, `llm_calls`, `failure_cases` tables
+- **Observability baseline** — `episodes.db`, `llm_calls`, `failure_cases`, and `task_traces`
 
 These are the **non-negotiable runtime core**. Changes here must be reversible, small, and explicitly justified.
 
@@ -188,9 +192,11 @@ What we're actively building to strengthen the runtime:
    - Replace placeholder behaviour with reliable modular workers.
 
 2. **TraceStore v1**
-   - Structured traces for every LLM call, task step, agent invocation.
-   - Cost attribution per lane, per agent, per workspace.
-   - Production diagnosis and observability.
+   - ✅ Phase 1: task-level backbone
+     - `task_traces` table (one row per `task_id`)
+     - `TaskService` writes `task_started` / `task_finished` / `task_failed`
+   - 🔜 Phase 1.1+: per-LLM-call spans, per-agent spans, `evaluator_score`
+   - Goal: cost attribution per lane/agent/workspace and production diagnosis.
 
 3. **PithEval v0.1**
    - 30–50 ground-truth tasks (code, research, planning, diagnostics).
@@ -243,4 +249,4 @@ These are **future or non-core** — they do not define Pith's identity and must
 
 ---
 
-*Last updated: 2026-05-07 · Pith Lab · Internal / Confidential*
+*Last updated: 2026-05-12 · Pith Lab · Internal / Confidential*
