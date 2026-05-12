@@ -2,7 +2,7 @@
 Pith v5 — Runtime Planner
 Author: Pith Lab
 License: MIT
-Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.2 Phase 1.5 Final
+Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.3 Phase 1.5 Final
 
 Governing docs:
 - docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md
@@ -205,6 +205,7 @@ class RuntimePlanner:
                 "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags,
+                "execution_path": "orchestrated",
             }
         except Exception as e:
             logger.exception("Orchestrator flow failed")
@@ -221,6 +222,7 @@ class RuntimePlanner:
                 "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags,
+                "execution_path": "orchestrated",
             }
 
     async def _run_direct_llm_flow(
@@ -264,6 +266,7 @@ class RuntimePlanner:
                 "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags or [],
+                "execution_path": "direct",
             }
         except Exception as e:
             logger.exception("Direct LLM flow failed")
@@ -280,4 +283,5 @@ class RuntimePlanner:
                 "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags or [],
+                "execution_path": "direct",
             }
