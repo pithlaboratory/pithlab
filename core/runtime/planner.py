@@ -2,7 +2,7 @@
 Pith v5 — Runtime Planner
 Author: Pith Lab
 License: MIT
-Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready
+Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.1 Cleanup
 
 Governing docs:
 - docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md
@@ -105,9 +105,10 @@ class RuntimePlanner:
     ) -> Dict[str, Any]:
         """
         Workspace-native entry point.
-        Передаёт context-параметры в Assembler, маршрутизирует по сложности/режиму.
+        Phase 1: heuristic routing + structured context assembly.
+        Phase 2: protocol-driven pruning, intent classification, agent routing.
         """
-        # 1. Сборка контекста (workspace_id пробрасывается сюда)
+        # 1. Сборка контекста (workspace_id пробрасывается в Assembler)
         assembled = self.context_assembler.build(
             query=text,
             user_id=user_id,
@@ -122,9 +123,18 @@ class RuntimePlanner:
 
         # 2. Определение режима и тегов
         runtime_mode = assembled.mode
+        # Phase 1: keyword heuristics. Replace with IntentClassifier in Phase 2.
         task_type = self._detect_task_type(text)
         router_mode = self._route_mode_for_task(task_type)
         router_mode = self._ensure_router_mode(router_mode, text)
+
+        # ✅ Explicit runtime_mode → router_mode alignment (prevent drift)
+        if runtime_mode == RuntimeMode.VISION and router_mode not in ("core", "agent", "long_context"):
+            logger.debug(f"VISION mode override: router_mode '{router_mode}' → 'core'")
+            router_mode = "core"
+        elif runtime_mode == RuntimeMode.DIAGNOSTICS and router_mode not in ("coder", "core"):
+            logger.debug(f"DIAGNOSTICS mode override: router_mode '{router_mode}' → 'coder'")
+            router_mode = "coder"
 
         # 3. Формируем goal_tags для трейсов и eval
         goal_tags: List[str] = []
@@ -132,17 +142,23 @@ class RuntimePlanner:
             goal_tags.append("g_tactical_self_diagnostics")
         elif runtime_mode == RuntimeMode.VISION:
             goal_tags.append("g_strategic_evolution")
+        # Phase 2: use goal_tags for agent routing/policy enforcement
 
         # 4. Маршрутизация потоков
-        if runtime_mode in (RuntimeMode.DIAGNOSTICS, RuntimeMode.VISION):
+        is_complex = self._is_complex_request(text)
+
+        # FIX: allow VISION/DIAGNOSTICS to use orchestrator for complex tasks
+        if runtime_mode in (RuntimeMode.DIAGNOSTICS, RuntimeMode.VISION) and not is_complex:
             return await self._run_direct_llm_flow(
                 prompt, context_str, text, mode=router_mode,
                 runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags
             )
 
-        if self._is_complex_request(text):
+        if is_complex:
+            # Option A: keep existing signature. Phase 2 will add assembled_context here.
             return await self._run_orchestrator_flow(
-                prompt, context_str, task_type=task_type, goal_tags=goal_tags
+                prompt, context_str, task_type=task_type, goal_tags=goal_tags,
+                runtime_mode=runtime_mode.value,
             )
 
         return await self._run_direct_llm_flow(
@@ -150,7 +166,14 @@ class RuntimePlanner:
             runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags
         )
 
-    async def _run_orchestrator_flow(self, prompt: str, context: str, task_type: str, goal_tags: List[str]) -> Dict[str, Any]:
+    async def _run_orchestrator_flow(
+        self,
+        prompt: str,
+        context: str,
+        task_type: str,
+        goal_tags: List[str],
+        runtime_mode: str = "normal",
+    ) -> Dict[str, Any]:
         try:
             agent_results = await orchestrator.run_async(prompt)
             response = orchestrator.synthesize(agent_results)
@@ -163,8 +186,8 @@ class RuntimePlanner:
                 "cost": 0.0,
                 "used_orchestrator": True,
                 "context_used": context,
-                "mode": "normal",
-                "runtime_mode": "normal",
+                "mode": runtime_mode,
+                "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags,
             }
@@ -180,7 +203,7 @@ class RuntimePlanner:
                 "used_orchestrator": False,
                 "context_used": context,
                 "mode": "error",
-                "runtime_mode": "normal",
+                "runtime_mode": runtime_mode,
                 "task_type": task_type,
                 "goal_tags": goal_tags,
             }
