@@ -2,7 +2,7 @@
 Pith v5 — Runtime Planner
 Author: Pith Lab
 License: MIT
-Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.1 Cleanup
+Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.2 Phase 1.5 Final
 
 Governing docs:
 - docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md
@@ -27,13 +27,22 @@ class RuntimePlanner:
     - Сложные запросы → orchestrator с multi-agent flow
     - Режимы: NORMAL, DIAGNOSTICS, VISION (управляют сборкой контекста)
     - Workspace-aware: изоляция контекста, метаданных, бюджетов
+    
+    Architecture notes:
+    - Phase 1: heuristic routing + structured context assembly.
+    - Phase 2: protocol-driven pruning, IntentClassifier, registry-driven routing.
+    - Planner owns execution branching, NOT task taxonomy SSOT.
     """
 
+    # Phase 1 heuristic complexity markers.
+    # TODO (Phase 2): replace with classifier- or policy-driven complexity gating.
     COMPLEX_MARKERS = [
         "проанализируй", "стратегия", "архитектура", "спрогнозируй",
         "план", "исследование", "многошаговый", "агент", "orchestrator",
     ]
 
+    # Phase 1 heuristic task classification keywords.
+    # TODO (Phase 2): Replace with IntentClassifier / registry-driven taxonomy.
     TASK_KEYWORDS = {
         "coding": ["код", "code", "python", "bash", "sql", "traceback", "stacktrace", "ошибка", "исправь", "патч", "рефактор"],
         "debug": ["баг", "багфикс", "дебаг", "отладка", "почини", "не работает"],
@@ -41,6 +50,16 @@ class RuntimePlanner:
         "research_flow": ["исследуй", "найди информацию", "анализ источников", "факты"],
         "long_context": ["длинный текст", "документ", "файл", "репозиторий", "анализ кода"],
         "reasoning": ["почему", "объясни", "логика", "причина", "анализ"],
+    }
+
+    # Phase 1 heuristic mapping: task_type → router_mode.
+    # TODO (Phase 2): Move to model_registry.json or router config as single source of truth.
+    TASK_TYPE_TO_ROUTER_MODE = {
+        "simple_chat": None, "summarize": None, "classification": None,
+        "reasoning": "core", "general": None, "architecture": "core",
+        "coding": "coder", "debug": "coder", "patch": "coder",
+        "agent_planning": "agent", "research_flow": "agent",
+        "long_context": "long_context",
     }
 
     def __init__(
@@ -73,6 +92,8 @@ class RuntimePlanner:
         subgoals_text = "; ".join(subgoal_titles)
         return f"Core purpose: {core}\nKey subgoals: {subgoals_text}"
 
+    # Phase 1 heuristic classifier.
+    # TODO (Phase 2): Replace with IntentClassifier / registry-driven routing.
     def _detect_task_type(self, text: str) -> str:
         text_lower = text.lower()
         for task_type, keywords in self.TASK_KEYWORDS.items():
@@ -81,14 +102,8 @@ class RuntimePlanner:
         return "general"
 
     def _route_mode_for_task(self, task_type: str) -> Optional[str]:
-        mapping = {
-            "simple_chat": None, "summarize": None, "classification": None,
-            "reasoning": "core", "general": None, "architecture": "core",
-            "coding": "coder", "debug": "coder", "patch": "coder",
-            "agent_planning": "agent", "research_flow": "agent",
-            "long_context": "long_context",
-        }
-        return mapping.get(task_type)
+        # Phase 1: reads from local mapping. Phase 2: delegate to REGISTRY.get_mode_for_task()
+        return self.TASK_TYPE_TO_ROUTER_MODE.get(task_type)
 
     def _is_complex_request(self, text: str) -> bool:
         markers_found = sum(1 for m in self.COMPLEX_MARKERS if m in text.lower())
