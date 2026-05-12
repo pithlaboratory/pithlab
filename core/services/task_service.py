@@ -5,9 +5,11 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 from core.schemas import TaskRecord, TaskState
+from core.observability.trace_store import TraceStore
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,10 @@ class TaskService:
     """
     v1.5: minimal in-memory task service + SQLite persistence bridge.
     Preserves domain logic while adding durable storage.
+    
+    Trace integration:
+    - task_started() → при создании задачи
+    - task_finished() / task_failed() → при смене статуса
     """
 
     def __init__(self, db_path: str = "data/episodes.db") -> None:
@@ -23,6 +29,8 @@ class TaskService:
         self._tasks: Dict[str, TaskRecord] = {}
         self.db_path = db_path
         self._ensure_table()
+        # ✅ TraceStore инициализация
+        self._trace_store = TraceStore(Path(db_path))
 
     def _get_conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
@@ -109,6 +117,12 @@ class TaskService:
         except sqlite3.IntegrityError:
             # Задача уже существует в БД (race condition / повторный вызов)
             pass
+
+        # ✅ Trace: задача создана и стартовала
+        self._trace_store.task_started(
+            task_id=task.task_id,
+            workspace_id=task.workspace_id,
+        )
 
         return task
 
@@ -216,6 +230,24 @@ class TaskService:
                 task.task_id,
             ),
         )
+        
+        # ✅ Trace: финализация задачи
+        if new_status == TaskState.completed:
+            duration_ms = None
+            if task.started_at and task.finished_at:
+                duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
+            self._trace_store.task_finished(task.task_id, duration_ms=duration_ms)
+
+        elif new_status in (TaskState.failed, TaskState.cancelled):
+            duration_ms = None
+            if task.started_at and task.finished_at:
+                duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
+            self._trace_store.task_failed(
+                task.task_id,
+                error_type=new_status.value,
+                duration_ms=duration_ms,
+            )
+
         return task
 
     def attach_execution_result(
