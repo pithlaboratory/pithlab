@@ -1,14 +1,15 @@
 """
-Context Assembler — собирает контекст для LLM-вызовов в рамках Pith runtime.
+Context Assembler — assembles runtime context for LLM calls in Pith.
 
 Canonical alignment:
+- docs/PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md
+- docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md
 - docs/PITH_MASTER_PLAN.md
-- docs/PRODUCT_DOCTRINE.md
 
 Purpose:
 - keep runtime context workspace-native,
-- preserve continuity,
-- keep context assembly governed and mode-aware.
+- preserve continuity without overload,
+- keep context assembly governed, mode-aware, and protocol-aligned.
 """
 
 import logging
@@ -27,7 +28,7 @@ class RuntimeMode(Enum):
 
 @dataclass
 class AssembledContext:
-    """Собранный контекст для LLM-вызова."""
+    """Structured runtime context for a single LLM call."""
 
     mode: RuntimeMode
     system_prompt: str
@@ -41,71 +42,59 @@ class AssembledContext:
 
     def to_prompt_string(self) -> str:
         """
-        Собирает финальный промпт согласно runtime-first приоритетам контекста:
-        1. System / runtime policy
-        2. Workspace identity
-        3. Mode instructions
-        4. Current request
-        5. Current task context
-        6. Conversation summary
-        7. Relevant memory
-        8. Related artifacts / documents
-        9. Recent conversation
+        Build user-context payload only.
+
+        Important:
+        - system_prompt is passed separately as a true system message,
+          so it must NOT be duplicated inside the assembled prompt.
+        - Context order follows runtime protocol priorities.
         """
         parts: List[str] = []
 
-        # 1. System / runtime policy
-        if self.system_prompt:
-            parts.append(self.system_prompt)
-
-        # 2. Workspace identity
+        # 1. Workspace identity
         if self.workspace_id:
             parts.append(f"Workspace: {self.workspace_id}")
 
-        # 3. Mode-specific instructions
+        # 2. Mode-specific instructions
         if self.mode == RuntimeMode.DIAGNOSTICS:
             parts.append(
-                "Режим: DIAGNOSTICS\n"
-                "Твоя задача — разобрать, что пошло не так, и предложить конкретные шаги фикса.\n"
-                "Фокус на локальной диагностике, воспроизводимости, вероятной причине, проверках и безопасном следующем действии.\n"
-                "Не уходи в общий самоанализ, философию системы или абстрактные архитектурные рассуждения без явного запроса."
+                "Mode: DIAGNOSTICS\n"
+                "Focus on concrete failure signals, likely root cause, reproducibility, "
+                "verification steps, and the safest next fix."
             )
         elif self.mode == RuntimeMode.VISION:
             parts.append(
-                "Режим: VISION\n"
-                "Фокус на архитектуре Pith, roadmap, trade-offs, ограничениях, governance и следующих шагах.\n"
-                "Отвечай как runtime-first architect: ясно, конкретно, без лишнего мета-комментирования и без persona-noise."
+                "Mode: VISION\n"
+                "Focus on Pith architecture, roadmap, trade-offs, constraints, governance, "
+                "and concrete next steps."
             )
         else:
             parts.append(
-                "Режим: NORMAL\n"
-                "Фокус на текущей задаче пользователя.\n"
-                "Сохраняй continuity, но не перегружай ответ нерелевантным историческим контекстом."
+                "Mode: NORMAL\n"
+                "Focus on the user's current task. Preserve continuity, but avoid irrelevant history."
             )
 
-        # 4. Current request
+        # 3. Current request
         if self.request_context:
-            parts.append(f"Current user request:\n{self.request_context}")
+            parts.append(f"Current request:\n{self.request_context}")
 
-        # 5. Current task context
+        # 4. Current task context
         if self.task_context:
             parts.append(f"Current task context:\n{self.task_context}")
 
-        # 6. Conversation summary
+        # 5. Conversation summary
         if self.summary:
-            parts.append(
-                f"Previous conversation summary (background only):\n{self.summary}"
-            )
+            parts.append(f"Conversation summary:\n{self.summary}")
 
-        # 7. Relevant memory
+        # 6. Relevant memory
         if self.memory_context:
             parts.append(f"Relevant memory:\n{self.memory_context}")
 
-        # 8. Related artifacts / documents
+        # 7. Related artifacts / documents
         if self.artifact_context:
-            parts.append(f"Related artifacts / documents:\n{self.artifact_context}")
+            parts.append(f"Relevant artifacts / documents:\n{self.artifact_context}")
 
-        # 9. Recent messages
+        # 8. Recent messages
         if self.recent_messages:
             history_str = "\n".join(
                 f"{msg.get('role', 'unknown')}: {msg.get('content', '').strip()}"
@@ -120,82 +109,41 @@ class AssembledContext:
 
 class ContextAssembler:
     """
-    Собирает контекст для LLM согласно runtime-first логике Pith.
+    Builds runtime context according to Pith runtime-first rules.
 
-    Режимы:
-    - NORMAL: стандартная работа, task-focus, continuity without overload
-    - DIAGNOSTICS: локальная диагностика ошибок, инцидентов, регрессий
-    - VISION: архитектура / roadmap / evolution именно Pith, а не любой пользовательский проект
+    Modes:
+    - NORMAL: standard task-focused execution with continuity
+    - DIAGNOSTICS: troubleshooting, regressions, failures, local root-cause analysis
+    - VISION: Pith architecture, roadmap, kernel, doctrine, north-star evolution
     """
 
-    MAX_RECENT_MESSAGES = 12
+    MAX_RECENT_MESSAGES = 10
     FETCH_HISTORY_LIMIT = 18
     MEMORY_RESULTS_K = 5
     MAX_MEMORY_ITEMS = 3
 
     DIAGNOSTICS_KW = [
-        "сломалось",
-        "ошибка",
-        "traceback",
-        "баг",
-        "fix",
-        "не работает",
-        "error",
-        "bug",
-        "broken",
-        "failed",
-        "failure",
-        "crash",
-        "stacktrace",
-        "stack trace",
-        "regression",
-        "инцидент",
-        "упало",
-        "падает",
-        "не запускается",
-        "не стартует",
+        "сломалось", "ошибка", "traceback", "баг", "fix", "не работает",
+        "error", "bug", "broken", "failed", "failure", "crash",
+        "stacktrace", "stack trace", "regression", "инцидент",
+        "упало", "падает", "не запускается", "не стартует",
     ]
 
-    # VISION mode должен включаться только для обсуждений самой системы Pith.
-    VISION_KW = [
-        "архитектура pith",
-        "архитектура системы pith",
-        "roadmap pith",
-        "эволюция pith",
-        "north star pith",
-        "self-analysis pith",
-        "разбери архитектуру pith",
-        "что улучшить в pith",
-        "pith vnext",
-        "pith master plan",
-        "pith kernel",
-        "product doctrine pith",
+    VISION_CORE_KW = [
+        "архитектура", "roadmap", "эволюция", "north star",
+        "kernel", "master plan", "product doctrine", "governance",
     ]
 
     SHORT_QUERY_KW = {
-        "/start",
-        "start",
-        "привет",
-        "hi",
-        "hello",
-        "тут",
-        "ок",
-        "okay",
-        "да",
-        "ага",
-        "давай",
+        "/start", "start", "привет", "hi", "hello", "тут",
+        "ок", "okay", "да", "ага", "давай",
     }
 
-    # Убираем только явный persona/meta noise, не трогая нормальные архитектурные термины.
+    # Persona/meta noise to strip from history & memory.
     META_NOISE_KW = {
-        "философ режим",
-        "парадокс режим",
-        "рефлексия режим",
-        "байесовский фильтр",
-        "монте-карло симуляция",
-        "квантификатор",
-        "анти-хайп",
-        "viktor vaughn phd",
+        "философ режим", "парадокс режим", "рефлексия режим",
+        "байесовский фильтр", "монте-карло симуляция",
+        "квантификатор", "анти-хайп", "viktor vaughn phd",
     }
 
     def __init__(self, memory_manager, artifact_service=None, task_service=None):
@@ -215,11 +163,9 @@ class ContextAssembler:
         **kwargs: Any,
     ) -> AssembledContext:
         """
-        Собирает контекст для planner/router/model call.
+        Build context for planner/router/model calls.
 
-        **kwargs сохранён для мягкой совместимости с call-sites,
-        которые могут временно пробрасывать дополнительные параметры
-        (например, session_id) до формального расширения сигнатуры.
+        **kwargs kept for soft compatibility with existing call-sites.
         """
         detected_mode = mode or self._detect_mode(query)
 
@@ -249,12 +195,10 @@ class ContextAssembler:
             memory_ctx = self._build_diagnostic_memory(user_id, query, workspace_id)
             artifact_ctx = self._fetch_logs_and_configs(workspace_id, task_id)
             task_ctx = self._build_task_context(task_id, focus="diagnostics")
-
         elif detected_mode == RuntimeMode.VISION:
             memory_ctx = self._build_vision_memory(user_id, workspace_id)
             artifact_ctx = self._fetch_north_star_docs()
             task_ctx = self._build_task_context(task_id, focus="vision")
-
         else:
             memory_ctx = self._build_memory_context(user_id, query, workspace_id)
             artifact_ctx = self._fetch_task_artifacts(workspace_id, task_id)
@@ -274,18 +218,17 @@ class ContextAssembler:
 
     def _detect_mode(self, query: str) -> RuntimeMode:
         """
-        Auto-detect режима на основе запроса.
+        Auto-detect runtime mode based on query.
 
-        Важно:
-        - diagnostics имеет приоритет над vision,
-        - vision включается только при явном запросе про Pith.
+        - DIAGNOSTICS has priority over VISION
+        - VISION only triggers for explicit Pith architecture/roadmap discussion
         """
         lower = (query or "").strip().lower()
 
         if any(kw in lower for kw in self.DIAGNOSTICS_KW):
             return RuntimeMode.DIAGNOSTICS
 
-        if any(kw in lower for kw in self.VISION_KW):
+        if "pith" in lower and any(kw in lower for kw in self.VISION_CORE_KW):
             return RuntimeMode.VISION
 
         return RuntimeMode.NORMAL
@@ -296,8 +239,9 @@ class ContextAssembler:
         workspace_id: Optional[str],
     ) -> List[Dict[str, str]]:
         """
-        Получает последние сообщения из memory manager.
-        При наличии workspace isolation лучше позднее добавить фильтр по workspace_id.
+        Fetch recent messages from memory manager.
+
+        TODO: add workspace_id filtering when workspace isolation is ready.
         """
         try:
             episodes = self.mm.get_recent_episodes(
@@ -322,8 +266,7 @@ class ContextAssembler:
                     }
                 )
 
-            return items[-self.FETCH_HISTORY_LIMIT :]
-
+            return items[-self.FETCH_HISTORY_LIMIT:]
         except Exception as e:
             logger.warning("Failed to fetch recent history: %s", e)
             return []
@@ -334,15 +277,19 @@ class ContextAssembler:
         user_id: str,
     ) -> str:
         """
-        Сворачивает старые сообщения в компактное summary.
-        Пока безопасный stub; позже можно заменить на summarizer/tool call.
+        Compress older messages into a compact summary.
+
+        Stub for now; can be replaced with summarizer/tool call later.
         """
         if not old_messages:
             return ""
 
+        first = old_messages[0].get("content", "")[:120].strip()
+        last = old_messages[-1].get("content", "")[:120].strip()
         return (
-            f"[Summary of {len(old_messages)} earlier messages — "
-            f"conversation context preserved for continuity]"
+            f"Earliest relevant point: {first}\n"
+            f"Latest prior point: {last}\n"
+            f"Compressed {len(old_messages)} earlier messages for continuity."
         )
 
     def _build_memory_context(
@@ -352,8 +299,9 @@ class ContextAssembler:
         workspace_id: Optional[str],
     ) -> str:
         """
-        NORMAL mode: релевантные memory records через vector search.
-        Не тянем память для слишком коротких или noise-like запросов.
+        NORMAL mode: relevant memory records via vector search.
+
+        Skip memory for too-short or noise-like queries.
         """
         try:
             q = (query or "").strip().lower()
@@ -381,11 +329,9 @@ class ContextAssembler:
                 meta = r.get("metadata", {}) or {}
                 timestamp = meta.get("timestamp", "")
                 source = meta.get("source", "memory")
-                line = f"[{source} {timestamp}] {content}".strip()
-                parts.append(line)
+                parts.append(f"[{source} {timestamp}] {content}".strip())
 
             return "\n\n".join(parts[: self.MAX_MEMORY_ITEMS])
-
         except Exception as e:
             logger.warning("Memory search failed: %s", e)
             return ""
@@ -397,7 +343,7 @@ class ContextAssembler:
         workspace_id: Optional[str],
     ) -> str:
         """
-        DIAGNOSTICS mode: поиск прошлых инцидентов и похожих failure cases.
+        DIAGNOSTICS mode: search for past incidents and similar failure cases.
         """
         try:
             vector_memory = getattr(self.mm, "vector_memory", None)
@@ -406,7 +352,6 @@ class ContextAssembler:
 
             search_query = f"ошибка баг инцидент failure regression {query or ''}".strip()
             results = vector_memory.search(search_query, k=3)
-
             if not results:
                 return ""
 
@@ -427,8 +372,7 @@ class ContextAssembler:
                     f"Lessons: {lessons}"
                 )
 
-            return "\n\n".join(parts)
-
+            return "\n\n".join(parts[: self.MAX_MEMORY_ITEMS])
         except Exception as e:
             logger.warning("Diagnostic memory search failed: %s", e)
             return ""
@@ -439,7 +383,7 @@ class ContextAssembler:
         workspace_id: Optional[str],
     ) -> str:
         """
-        VISION mode: архитектурные обсуждения, roadmap, north-star decisions.
+        VISION mode: architectural discussions, roadmap, north-star decisions.
         """
         try:
             vector_memory = getattr(self.mm, "vector_memory", None)
@@ -448,7 +392,6 @@ class ContextAssembler:
 
             search_query = "pith architecture evolution roadmap kernel governance"
             results = vector_memory.search(search_query, k=5)
-
             if not results:
                 return ""
 
@@ -461,13 +404,11 @@ class ContextAssembler:
                 meta = r.get("metadata", {}) or {}
                 timestamp = meta.get("timestamp", "")
                 source = meta.get("source", "memory")
-
                 parts.append(
                     f"[Architectural discussion {source} {timestamp}]\n{content}".strip()
                 )
 
             return "\n\n".join(parts[: self.MAX_MEMORY_ITEMS])
-
         except Exception as e:
             logger.warning("Vision memory search failed: %s", e)
             return ""
@@ -478,7 +419,7 @@ class ContextAssembler:
         focus: str,
     ) -> str:
         """
-        Собирает контекст текущей задачи из task_service.
+        Build current task context from task_service.
         """
         if not task_id or not self.task_service:
             return ""
@@ -501,7 +442,6 @@ class ContextAssembler:
                 parts.append(f"Error: {task.error_message}")
 
             return "\n".join(parts)
-
         except Exception as e:
             logger.warning("Task context fetch failed: %s", e)
             return ""
@@ -512,8 +452,9 @@ class ContextAssembler:
         task_id: Optional[str],
     ) -> str:
         """
-        NORMAL mode: артефакты текущей задачи.
-        Пока безопасный stub: не падает, даже если artifact service ещё не готов.
+        NORMAL mode: artifacts of the current task.
+
+        Safe stub for now; does nothing if artifact service is not ready.
         """
         if not self.artifact_service or not task_id:
             return ""
@@ -534,7 +475,6 @@ class ContextAssembler:
                 parts.append(f"- {name} ({kind})")
 
             return "\n".join(parts)
-
         except Exception as e:
             logger.warning("Task artifacts fetch failed: %s", e)
             return ""
@@ -545,8 +485,9 @@ class ContextAssembler:
         task_id: Optional[str],
     ) -> str:
         """
-        DIAGNOSTICS mode: логи и конфиги для troubleshooting.
-        Сейчас безопасный stub с минимальным полезным контекстом.
+        DIAGNOSTICS mode: logs and configs for troubleshooting.
+
+        Safe canonical stub for now.
         """
         parts: List[str] = []
 
@@ -564,10 +505,9 @@ class ContextAssembler:
 
     def _fetch_north_star_docs(self) -> str:
         """
-        VISION mode: North Star и архитектурные документы.
+        VISION mode: North Star and architecture docs.
 
-        Пока безопасный canonical stub.
-        Позже сюда можно подключить repo/doc retrieval.
+        Canonical stub until repo/doc retrieval is connected.
         """
         logger.debug(
             "_fetch_north_star_docs: using canonical stub until docs retrieval is connected"
