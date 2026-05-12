@@ -1,9 +1,7 @@
-# Создаём полный обновлённый PITH_MASTER_PLAN.md v5.1 с добавлением раздела 16. Pith vNext
-
-content = """# PITH MASTER PLAN · v5.1
+# PITH MASTER PLAN · v5.1
 
 **Single source of truth: architecture, roadmap, guardrails.**  
-**Last updated:** 2026‑05‑07 · **Status:** v5.1 / Runtime‑first baseline + vNext framing · **Owner:** Pith Lab
+**Last updated:** 2026‑05‑12 · **Status:** v5.1 / Runtime‑first baseline + vNext framing · **Owner:** Pith Lab
 
 ---
 
@@ -84,7 +82,7 @@ Pith — cognitive operating layer для длинных инженерных з
 - Persona directives, prefixes, loading‑messages для разных конфигов (engineer/coach/viktor).
 - Routing triggers (keywords, max_tokens, repo size, risk).
 - Параметры Memory (summarizer thresholds, forgetting policy, namespaces).
-- Настройки observability: пути для router_stats.json, episodes.db, лог‑файлы.
+- Настройки observability: пути для `router_stats.json`, `episodes.db`, лог‑файлы.
 
 ---
 
@@ -94,7 +92,7 @@ Pith — cognitive operating layer для длинных инженерных з
 
 - **Primary provider:** OpenRouter (multi‑model, multi‑vendor).
 - **Reserve provider:** Timeweb (DeepSeek, Gemini, Qwen) для fallback/резерва.
-- **Target state:** provider‑agnostic router — смена OpenRouter/Timeweb/локальной модели без переписывания ядра.
+- **Target state:** provider‑агностичный router — смена OpenRouter/Timeweb/локальной модели без переписывания ядра.
 
 ### 4.2 Registry (`core/model_registry.json`)
 
@@ -122,8 +120,8 @@ Pith — cognitive operating layer для длинных инженерных з
 1. Если `mode == core` → взять baseline‑кандидата из lane `chat_default`.
 2. Добавить модели из `config.yaml` по режиму / task_type.
 3. Если `prefer_free_first` → prepend free‑пул.
-4. Применить `_dedupe_model_specs()` по model_id.
-5. Итерировать кандидатов с учётом max_paid_hops, budget_weight и ошибок 4xx/5xx.
+4. Применить `_dedupe_model_specs()` по `model_id`.
+5. Итерировать кандидатов с учётом `max_paid_hops`, `budget_weight` и ошибок 4xx/5xx.
 
 **Принципы:**
 - Сначала бесплатный/дешёвый путь, затем эскалация.
@@ -136,7 +134,7 @@ Pith — cognitive operating layer для длинных инженерных з
 - Ранний `logging.basicConfig()` до импорта ModelRegistry для детализированной загрузки.
 - DEBUG в `model_registry.load()`: путь файла, top‑level keys, список lanes.
 - Sanity‑check: `[lanes] CORE baseline candidate from chat_default lane: ...`.
-- При ошибках — KeyError с перечислением доступных lanes/models.
+- При ошибках — `KeyError` с перечислением доступных lanes/models.
 - `router_stats.json` — агрегированные метрики по call'ам и fallback'ам.
 
 ---
@@ -152,7 +150,7 @@ Pith — cognitive operating layer для длинных инженерных з
 | **Hex (Strategist)** | Критика, риски, trade‑offs, foresight | `async process_async(query) → str` |
 | **Coda (Executor)** | Patch‑planning, next actions, execution framing | `process(query) → str` |
 
-Агенты оформлены как модульные `AgentSpec` с контрактом и namespace‑политиками.
+Агенты оформлены как модульные `AgentSpec` с контрактом и namespace‑политиками:
 
 ```python
 @dataclass
@@ -181,7 +179,7 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 | Тип | Назначение | Реализация |
 |---|---|---|
 | **Short‑term** | Текущий диалог, локальный контекст | RAM / session state |
-| **Episodic** | История запросов/ответов + метрики | episodes.db (SQLite) |
+| **Episodic** | История запросов/ответов + метрики | `episodes.db` (SQLite) |
 | **Semantic** | Факты, docs, repo‑фрагменты | vector store + файловая система |
 | **Profile** | Профили пользователей/Workspace | Profiles в SQLite / JSON |
 
@@ -234,20 +232,31 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 
 | Категория | Метрики | Хранение |
 |---|---|---|
-| **Quality** | score.final, persona_coherence, context_use | episodes.db |
-| **System** | latency_p50/p95, fallback_rate, cache_hit_ratio | router_stats.json |
-| **Economics** | cost_per_task, quality_weighted_cost, budget_utilization | router_stats.json |
-| **Evolution** | patch_acceptance_rate, rollback_rate, skill_growth | episodes.db |
+| **Quality** | `score.final`, `persona_coherence`, `context_use` | `episodes.db` |
+| **System** | `latency_p50/p95`, `fallback_rate`, `cache_hit_ratio` | `router_stats.json` |
+| **Economics** | `cost_per_task`, `quality_weighted_cost`, `budget_utilization` | `router_stats.json` |
+| **Evolution** | `patch_acceptance_rate`, `rollback_rate`, `skill_growth` | `episodes.db` |
 
-### 8.3 Blocking Thresholds
+### 8.3 TraceStore & Traces
+
+**TraceStore v1 (task‑level backbone) — уже реализован:**
+- `task_traces` таблица в `episodes.db` (одна строка на `task_id`).
+- `TaskService` пишет `task_started` / `task_finished` / `task_failed`.
+- Используется для базовой атрибуции длительности задач и статуса (`ok` / `failed` / `cancelled`).
+
+**Следующие шаги (TraceStore v1.1+):**
+- пер‑LLM‑call spans (link к `llm_calls`),
+- per‑agent spans,
+- evaluator score linkage,
+- trace query/read API.
+
+### 8.4 Blocking Thresholds
 
 | Условие | Действие |
 |---|---|
 | `score.final < 0.5` 2h подряд | кандидат на откат патча |
 | `cost_spike > 3x baseline` за 1h | kill switch + алерт |
 | `fallback_rate > 30%` за сессию | принудительный switch на core lane |
-
-Trace/metrics реализуются через **TaskTrace** и **Unified Trace Model** (llm_calls + episodes).
 
 ---
 
@@ -267,7 +276,7 @@ Trace/metrics реализуются через **TaskTrace** и **Unified Trace
 
 ### 9.3 Web (v6‑target)
 
-- Dashboard: метрики, бюджет, trace трейсировки.
+- Dashboard: метрики, бюджет, trace‑трейсировки.
 - UI для настройки registry, lanes, routes.
 - Визуализация agent‑графов и trace flow.
 
@@ -282,13 +291,14 @@ Trace/metrics реализуются через **TaskTrace** и **Unified Trace
 - Протянуть end‑to‑end self‑improvement loop (evaluator → miner → patch → skill).
 - Оформить `AgentSpec` для Tera, Plex, Hex, Coda.
 - Реализовать namespace isolation в памяти.
+- Довести TraceStore v1 до стабильного task‑level backbone (`task_traces`).
 
 ### 10.2 Mid‑term (v5.y, 30–90 дней)
 
 - Вынести workflows в декларативный формат (YAML/JSON), ближе к AOS.
 - Добавить self‑eval/self‑critique для high‑stakes workflows.
 - Встроить auto‑refactor / runtime‑checklist в CI.
-- Запустить **TraceStore** для полной атрибуции затрат/ошибок.
+- Расширить TraceStore (per‑LLM‑call spans, per‑agent spans, evaluator score linkage).
 - Реализовать **HierarchicalSummarizer**.
 
 ### 10.3 Long‑term (v6, 90+ дней)
@@ -305,9 +315,9 @@ Trace/metrics реализуются через **TaskTrace** и **Unified Trace
 - **Smoke‑test:** `python core/cognition/router.py` с `OPENROUTER_KEY=dummy` или unset.
 - **Syntax check:** `python -m py_compile core/cognition/router.py`.
 - **Lane diagnostics:** по логам `[registry]` / `[lanes]` / `[budget]`.
-- **Budget guard test:** mock `spent_usd > limit` → проверка hard_stop.
+- **Budget guard test:** mock `spent_usd > limit` → проверка `hard_stop`.
 - **Fallback test:** mock 404/429 → проверка переключения на следующую модель.
-- **Commit rule:** любое изменение в router/registry/memory/Kernel отражается в `PITH_CHANGELOG` + этом master‑plan.
+- **Commit rule:** любое изменение в router/registry/memory/Kernel отражается в `PITH_CHANGELOG.md` + этом master‑plan.
 
 ---
 
@@ -335,7 +345,7 @@ Trace/metrics реализуются через **TaskTrace** и **Unified Trace
 
 1. **Config‑driven routing & UI** — модели, префиксы, loading‑профили меняются без правки кода.
 2. **Provider‑agnostic router** — отсутствие vendor lock‑in.
-3. **Canonical runtime manifest** — по run_id можно восстановить состояние системы.
+3. **Canonical runtime manifest** — по `run_id` можно восстановить состояние системы.
 4. **Official memory taxonomy** — Short‑term / Episodic / Semantic / Profile.
 5. **Tool contracts standard** — JSON Schema для инструментов, versioning, validation.
 6. **Blocking eval metrics** — `score.final < 0.5` и `cost_spike > 3x` блокируют.
@@ -375,9 +385,9 @@ Trace/metrics реализуются через **TaskTrace** и **Unified Trace
 
 ## 16. Pith vNext
 
-### 16.1. Purpose
+### 16.1 Purpose
 
-**Pith vNext** — это следующий этап развития Pith после runtime-first baseline: переход от стабильного continuity runtime к **production-grade cognitive operating layer**, который накапливает способности, работает с богатыми knowledge surfaces и даёт управляемую мультимодальную операторскую среду.
+**Pith vNext** — это следующий этап развития Pith после runtime‑first baseline: переход от стабильного continuity runtime к **production‑grade cognitive operating layer**, который накапливает способности, работает с богатыми knowledge surfaces и даёт управляемую мультимодальную операторскую среду.
 
 Если Pith v5/v5.1 фиксирует ядро, workspace substrate и governance baseline, то Pith vNext расширяет систему в сторону:
 - **repo intelligence**,
@@ -392,14 +402,14 @@ Pith vNext не меняет identity продукта. Он остаётся:
 **Новая формулировка уровня roadmap:**
 > **Pith vNext solves continuity, capability accumulation and governed intelligence inside workspaces.**
 
-### 16.2. Core Idea
+### 16.2 Core Idea
 
 Pith vNext строится вокруг **шести контуров**, работающих как единая операционная среда:
 
-1. **Kernel Runtime** — event-driven operating loop, planner, router, evaluator, policy engine.
+1. **Kernel Runtime** — event‑driven operating loop, planner, router, evaluator, policy engine.
 2. **Workspace Substrate** — workspaces, tasks, artifacts, memory, repo bindings, task history.
 3. **Capability System** — skills, tools, reusable procedures, agent contracts.
-4. **Intelligence System** — repo/docs/web ingestion, context retriever, multi-source assembly, multimodal understanding.
+4. **Intelligence System** — repo/docs/web ingestion, context retriever, multi‑source assembly, multimodal understanding.
 5. **Governance System** — traces, runtime versions, policy decisions, rollback, approval queues, budgets.
 6. **Experience Layer** — Telegram, CLI, dashboard, voice, multimodal operator shell.
 
@@ -407,9 +417,9 @@ Pith vNext строится вокруг **шести контуров**, раб
 - interfaces are secondary,
 - runtime is primary,
 - governance is mandatory,
-- continuity > feature-zoo.
+- continuity > feature‑zoo.
 
-### 16.3. What Pith vNext Adds
+### 16.3 What Pith vNext Adds
 
 #### Repo & Knowledge Intelligence
 
@@ -448,7 +458,7 @@ Pith vNext расширяет delivery layer без подмены ядра:
 - **Rich dashboard** для traces, workspace navigation, artifact browser, policy views и agent graphs.
 - **Единый operator shell** поверх Telegram, CLI, dashboard и будущих multimodal surfaces.
 
-### 16.4. vNext Phase Map
+### 16.4 vNext Phase Map
 
 Pith vNext развивается как продолжение текущих фаз, а не как новая параллельная архитектура.
 
@@ -469,36 +479,41 @@ Pith vNext развивается как продолжение текущих �
 - Phase 4 Capability accumulation,
 - Phase 5 Intelligence expansion.
 
-### 16.5. Canonical Capabilities of Pith vNext
+### 16.5 Canonical Capabilities of Pith vNext
 
 На зрелом этапе Pith vNext должен обеспечивать следующие возможности:
 
 #### Continuity
+
 - Workspace as unit of reality.
 - Continuity across sessions, interfaces and tasks.
 - Recovery of relevant context without forcing the user to restate project state.
 
 #### Capability Accumulation
+
 - Skills as reusable operational procedures.
-- Skill reuse across tasks and domains where policy allows.
-- Evolution from one-off answers toward reusable execution patterns.
+- Skill reuse across tasks and domains где policy позволяет.
+- Evolution от one-off ответов к reusable execution patterns.
 
 #### Intelligence
+
 - Repo understanding.
 - Document understanding.
 - Web intelligence.
-- Multi-source and eventually multimodal context retrieval.
+- Multi-source и, в перспективе, multimodal context retrieval.
 
 #### Governance
-- Every meaningful step observable through traces, scores and policies.
-- Rollback and kill-switch paths always available.
-- Attribution for cost, actions and decision paths per task / workspace / agent.
+
+- Каждый значимый шаг observable через traces, scores и policies.
+- Rollback и kill-switch paths всегда доступны.
+- Attribution для cost, actions и decision paths per task / workspace / agent.
 
 #### Experience
-- One runtime, many surfaces: Telegram, CLI, dashboard, voice and future interfaces.
-- Operator-grade visibility instead of opaque assistant behavior.
 
-### 16.6. Guardrails for vNext
+- One runtime, many surfaces: Telegram, CLI, dashboard, voice и future interfaces.
+- Operator-grade visibility вместо opaque assistant behavior.
+
+### 16.6 Guardrails for vNext
 
 Pith vNext must not drift into the wrong shape. The following remain explicit non-goals:
 
@@ -516,7 +531,7 @@ Pith vNext must not drift into the wrong shape. The following remain explicit no
 
 If the answer is "no", it is not part of Pith vNext.
 
-### 16.7. One-Line Framing
+### 16.7 One-Line Framing
 
 > **Chat solves prompts. Pith solves continuity.**  
 > **Pith vNext solves continuity, capability accumulation and governed intelligence inside workspaces.**
@@ -530,5 +545,3 @@ If the answer is "no", it is not part of Pith vNext.
 *Версия v5.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
 
 </div>
-"""
-
