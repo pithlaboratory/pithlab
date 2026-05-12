@@ -3,11 +3,10 @@ Pith v5 — Intelligent LLM Router with Caching, Fallbacks & Budget Control
 Author: Pith Lab
 License: MIT
 
-Workspace-aware extensions (2026-05-07):
-- workspace_id parameter for budget/policy isolation
-- Per-workspace budget tracking (stub for now, full impl later)
-- Per-workspace policy enforcement (stub)
-- Enriched traces with workspace context via extra={}
+Registry-First Architecture (2026-05-12):
+- Models, lanes, task_routes → source of truth in model_registry.json
+- Policy, limits, triggers → source of truth in config.yaml
+- Router → orchestration layer only
 """
 import sys
 import os
@@ -52,7 +51,7 @@ from core.traces import (
 
 logger = logging.getLogger(__name__)
 
-# === DEFAULT_CONFIG: синхронизирован с config.yaml ===
+# === DEFAULT_CONFIG: только runtime policy, НЕ дублирует registry ===
 DEFAULT_CONFIG = {
     "budget": {
         "monthly_usd": 30.0,
@@ -87,7 +86,7 @@ DEFAULT_CONFIG = {
         "allow_premium_fallback": False,
         "premium_requires_explicit": True,
         "global_policy": {
-            "prefer_free_first": False,  # ✅ FIX: стабильность важнее экономии
+            "prefer_free_first": False,  # ✅ стабильность важнее экономии
             "default_paid_model": "deepseek/deepseek-v4-flash",
             "max_paid_hops_per_request": 2,
             "max_premium_hops_per_day": 8,
@@ -105,56 +104,9 @@ DEFAULT_CONFIG = {
         "premium_trigger_keywords": [
             "critical", "production incident", "high stakes", "arbiter", "критично", "сложнейший",
         ],
-        "task_routes": {
-            "simple_chat": "free",
-            "summarize": "free",
-            "classification": "free",
-            "reasoning": "core",
-            "general": "core",
-            "architecture": "core",
-            "coding": "coder",
-            "debug": "coder",
-            "patch": "coder",
-            "agent_planning": "agent",
-            "research_flow": "agent",
-            "long_context": "long_context",
-        },
+        # ✅ task_routes удалены отсюда — живут в model_registry.json
     },
-    "models": {
-        "free": [
-            {"id": "qwen/qwen3-coder:free", "budget_weight": 0.0, "role": "free_coder_primary"},
-            # ✅ FIX: удалён мёртвый endpoint qwen/qwen3-30b-a3b:free
-            {"id": "meta-llama/llama-3.3-70b-instruct:free", "budget_weight": 0.0, "role": "free_reasoning_alt"},
-        ],
-        "core": [
-            {"id": "deepseek/deepseek-v4-flash", "budget_weight": 1.0, "role": "primary_general"},
-            {"id": "deepseek/deepseek-chat-v3.1", "budget_weight": 1.08, "role": "stable_general_fallback"},
-            {"id": "qwen/qwen3-32b", "budget_weight": 1.12, "role": "reasoning_general_alt"},
-        ],
-        "coder": [
-            {"id": "qwen/qwen3-coder-plus", "budget_weight": 1.0, "role": "primary_coder"},
-            {"id": "deepseek/deepseek-v4-flash", "budget_weight": 1.05, "role": "fast_coder_fallback"},
-            {"id": "moonshotai/kimi-k2.6", "budget_weight": 1.12, "role": "long_horizon_coder"},
-            {"id": "qwen/qwen3-coder:free", "budget_weight": 0.0, "role": "free_coder_backup"},
-        ],
-        "agent": [
-            {"id": "moonshotai/kimi-k2.6", "budget_weight": 1.0, "role": "primary_agentic"},
-            {"id": "moonshotai/kimi-k2.5", "budget_weight": 1.05, "role": "agentic_fallback"},
-            {"id": "deepseek/deepseek-v4-flash", "budget_weight": 1.08, "role": "general_agent_fallback"},
-            # ✅ FIX: удалён мёртвый endpoint qwen/qwen3-30b-a3b:free
-        ],
-        "long_context": [
-            {"id": "deepseek/deepseek-v4-flash", "budget_weight": 1.0, "role": "primary_long_context"},
-            {"id": "deepseek/deepseek-v4-pro", "budget_weight": 1.25, "role": "high_depth_long_context"},
-            {"id": "moonshotai/kimi-k2.6", "budget_weight": 1.18, "role": "long_context_agentic"},
-            {"id": "qwen/qwen3-coder-plus", "budget_weight": 1.15, "role": "repo_scale_long_context"},
-        ],
-        "premium": [
-            {"id": "anthropic/claude-sonnet-4", "budget_weight": 2.0, "role": "highest_stakes_reasoning"},
-            {"id": "deepseek/deepseek-v4-pro", "budget_weight": 1.55, "role": "premium_coding_reasoning"},
-            {"id": "moonshotai/kimi-k2.6", "budget_weight": 1.35, "role": "premium_agentic_alt"},
-        ],
-    },
+    # ✅ models удалены отсюда — живут в model_registry.json
     "cache": {
         "enabled": True,
         "ttl_seconds": 3600,
@@ -167,7 +119,6 @@ DEFAULT_CONFIG = {
         "persist_llm_calls": True,
         "persist_router_decisions": True,
     },
-    # 🆕 WORKSPACE: Workspace-specific policies (stub for now)
     "workspace_policies": {
         # Example: "ws_production": {"allow_premium": False, "max_daily_usd": 5.0}
     },
@@ -357,7 +308,10 @@ class MetricsTracker:
             logger.warning(f"Metrics save failed: {e}")
 
     def _estimate_cost(self, model: str, usage: Dict[str, int]) -> float:
-        pricing = self.PRICING.get(model, self.PRICING["default"])
+        try:
+            pricing = REGISTRY.get_pricing(model)
+        except Exception:
+            pricing = {"input": 0.0005, "output": 0.0015}
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         return (
@@ -390,10 +344,6 @@ class MetricsTracker:
                 + usage.get("prompt_tokens", 0)
                 + usage.get("completion_tokens", 0)
             )
-            # 🆕 WORKSPACE: TODO — per-workspace budget tracking
-            # if workspace_id:
-            #     workspace_path = Path(f"data/metrics/workspace_{workspace_id}_stats.json")
-            #     # load, increment, save
         self._save()
 
     def check_budget(
@@ -402,8 +352,6 @@ class MetricsTracker:
         if not self.enabled:
             return {"ok": True, "message": "Metrics disabled"}
         
-        # 🆕 WORKSPACE: TODO — load workspace-specific budget if workspace_id provided
-        # For now, use global budget
         pct = self.stats.cost_usd / self.budget_limit if self.budget_limit > 0 else 0
         status = "ok"
         if pct >= 1.0:
@@ -457,7 +405,7 @@ class LLMRouter:
     - Smart fallback loop with 404/429 handling
     - Budget tracking and policy enforcement
     - Retry logic with exponential backoff
-    - 🆕 Workspace-aware budget/policy isolation
+    - 🆕 Registry-first model resolution (Phase 1)
     """
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -507,20 +455,37 @@ class LLMRouter:
                 base[k] = v
 
     def _get_models_for_mode(self, mode: str) -> List[ModelSpec]:
+        """
+        Phase 2: registry-first model resolution.
+        Tries ModelRegistry.get_models_for_lane() first, falls back to legacy config.
+        """
+        # Try registry first
+        try:
+            lane_models = REGISTRY.get_models_for_lane(mode)
+            if lane_models:
+                return [
+                    ModelSpec(
+                        id=m.model_id,
+                        budget_weight=getattr(m, "budget_weight", 1.0),
+                        role=getattr(m, "role", ""),
+                        max_tokens=getattr(m, "max_tokens", None),
+                        temperature=getattr(m, "temperature", None),
+                    )
+                    for m in lane_models
+                ]
+        except (KeyError, AttributeError, TypeError) as e:
+            logger.debug(f"Registry lookup for lane '{mode}' failed: {e}")
+
+        # Fallback to legacy config path (transitional)
         models_cfg = self.config.get("models", {}).get(mode, []) or []
         if not models_cfg:
             fallback = self.config.get("models", {}).get("core", []) or []
-            models_cfg = (
-                fallback
-                if fallback
-                else [
-                    {
-                        "id": self.config.get("routing", {})
-                        .get("global_policy", {})
-                        .get("default_paid_model", "deepseek/deepseek-v4-flash")
-                    }
-                ]
-            )
+            models_cfg = fallback if fallback else [
+                {"id": self.config.get("routing", {})
+                .get("global_policy", {})
+                .get("default_paid_model", "deepseek/deepseek-v4-flash")}
+            ]
+        
         specs: List[ModelSpec] = []
         for m in models_cfg:
             if isinstance(m, str):
@@ -538,6 +503,8 @@ class LLMRouter:
         return specs
 
     def _select_mode_by_content(self, prompt: str) -> RouterMode:
+        # Phase 1: keyword heuristics. 
+        # Phase 2: delegate to REGISTRY.detect_intent(prompt) or IntentClassifier.
         routing = self.config.get("routing", {})
         if len(prompt) > routing.get("long_context_trigger_chars", 12000):
             return RouterMode.LONG_CONTEXT
@@ -557,13 +524,6 @@ class LLMRouter:
     def _check_workspace_policy(
         self, workspace_id: Optional[str], mode: RouterMode
     ) -> Dict[str, Any]:
-        """
-        Stub для workspace-specific policy enforcement.
-        TODO: Реализовать полноценную policy engine когда будет WorkspaceService.
-        
-        Returns:
-            {"ok": bool, "reason": str, "override_mode": Optional[RouterMode]}
-        """
         if not workspace_id:
             return {"ok": True, "reason": "no_workspace_id"}
         
@@ -573,7 +533,6 @@ class LLMRouter:
         if not policy:
             return {"ok": True, "reason": "no_policy_defined"}
         
-        # Example policy checks:
         if mode == RouterMode.PREMIUM and not policy.get("allow_premium", True):
             logger.warning(f"Workspace {workspace_id} blocks PREMIUM mode, falling back to CORE")
             return {"ok": False, "reason": "premium_blocked", "override_mode": RouterMode.CORE}
@@ -683,7 +642,7 @@ class LLMRouter:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         force_refresh: bool = False,
-        workspace_id: Optional[str] = None,  # 🆕 WORKSPACE
+        workspace_id: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         start_time = time.time()
@@ -693,7 +652,6 @@ class LLMRouter:
         else:
             mode = normalize_router_mode(mode)
 
-        # 🆕 WORKSPACE: Policy check
         policy_result = self._check_workspace_policy(workspace_id, mode)
         if not policy_result["ok"]:
             override_mode = policy_result.get("override_mode")
@@ -714,7 +672,7 @@ class LLMRouter:
                     "[lanes] chat_default lane is not defined in model_registry.json"
                 )
 
-        budget_status = self.metrics.check_budget(workspace_id=workspace_id)  # 🆕 WORKSPACE
+        budget_status = self.metrics.check_budget(workspace_id=workspace_id)
         policy = self.config.get("routing", {}).get("global_policy", {})
         prefer_free = policy.get("prefer_free_first", True)
 
@@ -723,7 +681,6 @@ class LLMRouter:
                 f"Budget {budget_status['status']}: {budget_status['recommendation']}"
             )
             if self.config.get("budget", {}).get("hard_stop", True):
-                # ✅ FIX: workspace_id через extra, не как параметр
                 record_llm_call(
                     make_llm_call_trace(
                         agent=kwargs.get("agent", "unknown"),
@@ -742,7 +699,7 @@ class LLMRouter:
                         error=f"budget_exceeded:{budget_status['spent_usd']}/{budget_status['limit_usd']}",
                         extra={
                             "failure_stage": "budget_hard_stop",
-                            "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                            "workspace_id": workspace_id,
                         },
                     )
                 )
@@ -761,7 +718,7 @@ class LLMRouter:
                         success=False,
                         reason="budget_hard_stop",
                         error=f"Budget exceeded: {budget_status['spent_usd']}/{budget_status['limit_usd']}",
-                        extra={"workspace_id": workspace_id},  # ✅ WORKSPACE via extra
+                        extra={"workspace_id": workspace_id},
                     )
                 )
                 raise BudgetExceededError(
@@ -769,7 +726,6 @@ class LLMRouter:
                 )
             mode = RouterMode.FREE
 
-        # 📝 DECISION #1: Start
         record_router_decision(
             make_router_decision_trace(
                 agent=kwargs.get("agent", "unknown"),
@@ -786,7 +742,7 @@ class LLMRouter:
                 reason="router_call_started",
                 extra={
                     "policy_check": policy_result,
-                    "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                    "workspace_id": workspace_id,
                 },
             )
         )
@@ -816,7 +772,6 @@ class LLMRouter:
                 candidates = free_pool + candidates
             candidates = _dedupe_model_specs(candidates)
 
-        # 📝 DECISION #2: Candidates ready
         record_router_decision(
             make_router_decision_trace(
                 agent=kwargs.get("agent", "unknown"),
@@ -833,7 +788,7 @@ class LLMRouter:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 reason="candidates_ready",
-                extra={"workspace_id": workspace_id},  # ✅ WORKSPACE via extra
+                extra={"workspace_id": workspace_id},
             )
         )
 
@@ -855,7 +810,6 @@ class LLMRouter:
                     self.metrics.record_call(
                         candidate.id, {}, cached=True, workspace_id=workspace_id
                     )
-                    # ✅ FIX: workspace_id через extra
                     record_llm_call(
                         make_llm_call_trace(
                             agent=kwargs.get("agent", "unknown"),
@@ -873,7 +827,7 @@ class LLMRouter:
                             cost_usd=0.0,
                             extra={
                                 "source": "router_cache",
-                                "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                                "workspace_id": workspace_id,
                             },
                         )
                     )
@@ -896,7 +850,7 @@ class LLMRouter:
                             final_model=cached.get("model", candidate.id),
                             hops_used=hops,
                             reason="cache_hit",
-                            extra={"workspace_id": workspace_id},  # ✅ WORKSPACE via extra
+                            extra={"workspace_id": workspace_id},
                         )
                     )
                     return LLMResponse(
@@ -941,7 +895,6 @@ class LLMRouter:
                     api_result["model"], api_result["usage"]
                 )
 
-                # ✅ FIX: workspace_id через extra
                 record_llm_call(
                     make_llm_call_trace(
                         agent=kwargs.get("agent", "unknown"),
@@ -961,7 +914,7 @@ class LLMRouter:
                             "candidate_id": candidate.id,
                             "candidate_role": candidate.role,
                             "budget_weight": candidate.budget_weight,
-                            "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                            "workspace_id": workspace_id,
                         },
                     )
                 )
@@ -988,7 +941,7 @@ class LLMRouter:
                             "candidate_id": candidate.id,
                             "candidate_role": candidate.role,
                             "attempt": attempt_idx + 1,
-                            "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                            "workspace_id": workspace_id,
                         },
                     )
                 )
@@ -1025,7 +978,6 @@ class LLMRouter:
             first_id, {}, cached=False, error=last_error, workspace_id=workspace_id
         )
 
-        # ✅ FIX: workspace_id через extra
         record_llm_call(
             make_llm_call_trace(
                 agent=kwargs.get("agent", "unknown"),
@@ -1044,7 +996,7 @@ class LLMRouter:
                 error=last_error,
                 extra={
                     "failure_stage": "router_exhausted_candidates",
-                    "workspace_id": workspace_id,  # ✅ WORKSPACE via extra
+                    "workspace_id": workspace_id,
                 },
             )
         )
@@ -1068,7 +1020,7 @@ class LLMRouter:
                 hops_used=hops,
                 reason="final_failure",
                 error=last_error,
-                extra={"workspace_id": workspace_id},  # ✅ WORKSPACE via extra
+                extra={"workspace_id": workspace_id},
             )
         )
         return LLMResponse(
@@ -1112,7 +1064,6 @@ def normalize_router_mode(mode: Union[str, RouterMode, None]) -> RouterMode:
         return mode
     if isinstance(mode, str):
         mode_l = mode.lower()
-        # алиас для старого vision-режима
         if mode_l == "vision":
             logger.warning("Alias mode 'vision' mapped to CORE")
             return RouterMode.CORE
@@ -1131,11 +1082,10 @@ def call_llm(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    workspace_id: Optional[str] = None,  # 🆕 WORKSPACE
+    workspace_id: Optional[str] = None,
     **kwargs,
 ) -> Dict[str, Any]:
     router = get_router()
-    # ✅ Не ломаем implicit auto-routing: None остаётся None
     safe_mode = normalize_router_mode(mode) if mode is not None else None
 
     response = router.call(
@@ -1145,7 +1095,7 @@ def call_llm(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        workspace_id=workspace_id,  # 🆕 WORKSPACE
+        workspace_id=workspace_id,
         force_refresh=kwargs.pop("force_refresh", False),
         **kwargs,
     )
@@ -1171,7 +1121,7 @@ if __name__ == "__main__":
             "Explain quantum entanglement in one sentence.",
             mode="core",
             force_refresh=True,
-            workspace_id="test_ws_001",  # 🆕 WORKSPACE: smoke test
+            workspace_id="test_ws_001",
         )
         if res.error:
             print(f"❌ {res.error}")
