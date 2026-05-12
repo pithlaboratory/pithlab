@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 
 class TaskService:
     """
-    v1.5: minimal in-memory task service + SQLite persistence bridge.
+    v1.6: minimal in-memory task service + SQLite persistence bridge.
     Preserves domain logic while adding durable storage.
     
-    Trace integration:
-    - task_started() → при создании задачи
+    Trace integration (v1.1 cleanup):
+    - task_started() → при регистрации задачи в runtime (не при старте исполнения!)
     - task_finished() / task_failed() → при смене статуса
+    - Все trace-вызовы обёрнуты в try/except для graceful degradation
     """
 
     def __init__(self, db_path: str = "data/episodes.db") -> None:
@@ -35,12 +36,16 @@ class TaskService:
     def _get_conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
-    def _execute(self, sql: str, params: tuple) -> None:
-        """Helper to execute SQL with proper connection lifecycle and rollback on error."""
+    def _execute(self, sql: str, params: tuple) -> int:
+        """
+        Helper to execute SQL with proper connection lifecycle and rollback on error.
+        Returns: number of rows affected (for rowcount checks).
+        """
         conn = self._get_conn()
         try:
-            conn.execute(sql, params)
+            cursor = conn.execute(sql, params)
             conn.commit()
+            return cursor.rowcount
         except Exception:
             conn.rollback()
             raise
@@ -115,14 +120,19 @@ class TaskService:
                 ),
             )
         except sqlite3.IntegrityError:
-            # Задача уже существует в БД (race condition / повторный вызов)
-            pass
+            logger.warning("Task %s already exists in DB; possible duplicate create_task call", task.task_id)
 
-        # ✅ Trace: задача создана и стартовала
-        self._trace_store.task_started(
-            task_id=task.task_id,
-            workspace_id=task.workspace_id,
-        )
+        # ✅ Trace: задача зарегистрирована в runtime (не обязательно начала исполняться!)
+        # NOTE: semantic gap — task_started ≠ execution started.
+        # Execution start is tracked via started_at in update_status(executing).
+        # This is a transitional design until TraceStore supports task_created event.
+        try:
+            self._trace_store.task_started(
+                task_id=task.task_id,
+                workspace_id=task.workspace_id,
+            )
+        except Exception:
+            logger.exception("TraceStore.task_started failed for task %s — continuing without trace", task.task_id)
 
         return task
 
@@ -221,7 +231,7 @@ class TaskService:
         self._tasks[task_id] = task
 
         # --- SQLite persistence via helper ---
-        self._execute(
+        rows_affected = self._execute(
             "UPDATE tasks SET status = ?, completed_at = ?, metadata_json = ? WHERE id = ?",
             (
                 task.status.value,
@@ -230,23 +240,28 @@ class TaskService:
                 task.task_id,
             ),
         )
-        
-        # ✅ Trace: финализация задачи
-        if new_status == TaskState.completed:
-            duration_ms = None
-            if task.started_at and task.finished_at:
-                duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
-            self._trace_store.task_finished(task.task_id, duration_ms=duration_ms)
+        if rows_affected == 0:
+            logger.warning("UPDATE tasks affected 0 rows for task_id=%s — possible race or missing record", task_id)
 
-        elif new_status in (TaskState.failed, TaskState.cancelled):
-            duration_ms = None
-            if task.started_at and task.finished_at:
-                duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
-            self._trace_store.task_failed(
-                task.task_id,
-                error_type=new_status.value,
-                duration_ms=duration_ms,
-            )
+        # ✅ Trace: финализация задачи (с защитой от падения)
+        try:
+            if new_status == TaskState.completed:
+                duration_ms = None
+                if task.started_at and task.finished_at:
+                    duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
+                self._trace_store.task_finished(task.task_id, duration_ms=duration_ms)
+
+            elif new_status in (TaskState.failed, TaskState.cancelled):
+                duration_ms = None
+                if task.started_at and task.finished_at:
+                    duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
+                self._trace_store.task_failed(
+                    task.task_id,
+                    error_type=new_status.value,
+                    duration_ms=duration_ms,
+                )
+        except Exception:
+            logger.exception("TraceStore finalization failed for task %s — task state updated, trace skipped", task_id)
 
         return task
 
@@ -288,8 +303,11 @@ class TaskService:
         self._tasks[task_id] = task
 
         # --- SQLite persistence via helper ---
-        self._execute(
+        rows_affected = self._execute(
             "UPDATE tasks SET metadata_json = ? WHERE id = ?",
             (json.dumps(task.metadata or {}), task.task_id),
         )
+        if rows_affected == 0:
+            logger.warning("UPDATE tasks metadata affected 0 rows for task_id=%s", task_id)
+
         return task
