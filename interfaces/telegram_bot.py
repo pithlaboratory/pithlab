@@ -11,7 +11,6 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-
     _env_path = Path(__file__).resolve().parent.parent / ".env"
     if _env_path.exists():
         load_dotenv(_env_path)
@@ -35,11 +34,22 @@ os.environ.setdefault("LC_ALL", "ru_RU.UTF-8")
 import sys
 import inspect
 import uuid
+
+try:
+    enc_out = getattr(sys.stdout, "encoding", None)
+    if isinstance(enc_out, str) and enc_out.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+    enc_err = getattr(sys.stderr, "encoding", None)
+    if isinstance(enc_err, str) and enc_err.lower() != "utf-8":
+        sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, UnicodeError):
+    pass
+
 import asyncio
 import contextlib
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -56,16 +66,6 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
-try:
-    enc_out = getattr(sys.stdout, "encoding", None)
-    if isinstance(enc_out, str) and enc_out.lower() != "utf-8":
-        sys.stdout.reconfigure(encoding="utf-8")
-    enc_err = getattr(sys.stderr, "encoding", None)
-    if isinstance(enc_err, str) and enc_err.lower() != "utf-8":
-        sys.stderr.reconfigure(encoding="utf-8")
-except (AttributeError, UnicodeError):
-    pass
-
 # --- PATHS / IMPORTS ---
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -80,7 +80,6 @@ from core.services.artifact_service import ArtifactService
 # Optional trace service
 try:
     from core.governance.trace_service import TraceService
-
     trace_service = TraceService()
 except ImportError:
     trace_service = None
@@ -93,17 +92,15 @@ try:
 except ImportError:
     ToolRegistry = None
 
-# Budget check via router
+# Budget check via router (correct import)
 try:
     from core.cognition.router import get_router
-
     router_available = True
 except ImportError:
     router_available = False
 
 # === CONSTANTS ===
 MAX_INPUT_CHARS_DEFAULT = 8000
-TELEGRAM_MESSAGE_LIMIT = 4000
 
 # === LOGGING ===
 logging_kwargs = {
@@ -185,11 +182,6 @@ if len(PITH_LOADING_STEP_DELAYS) != len(PITH_LOADING_STATES) - 1:
     PITH_LOADING_STEP_DELAYS = (
         DEFAULT_LOADING_STEP_DELAYS * (needed // 3 + 1)
     )[:needed]
-
-
-def _clip_telegram_text(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> str:
-    return (text or "")[:limit]
-
 
 # === SYSTEM MESSAGES ===
 def _fmt_sys(text: str) -> str:
@@ -348,7 +340,6 @@ async def safe_reply(message, text, reply_markup=None, retries: int = 3):
         text = str(text).encode("utf-8", errors="replace").decode("utf-8")
     except Exception:
         text = str(text)
-    text = _clip_telegram_text(text)
     for attempt in range(retries):
         try:
             return await message.reply_text(text, reply_markup=reply_markup)
@@ -360,7 +351,6 @@ async def safe_reply(message, text, reply_markup=None, retries: int = 3):
         except UnicodeEncodeError as e:
             logger.error("Unicode error in reply: %s", e)
             text = text.encode("ascii", errors="replace").decode("ascii")
-            text = _clip_telegram_text(text)
             return await message.reply_text(text, reply_markup=reply_markup)
     return None
 
@@ -372,7 +362,6 @@ async def safe_callback_reply(query, text, reply_markup=None, retries: int = 3):
         text = str(text).encode("utf-8", errors="replace").decode("utf-8")
     except Exception:
         text = str(text)
-    text = _clip_telegram_text(text)
     for attempt in range(retries):
         try:
             return await query.message.reply_text(text, reply_markup=reply_markup)
@@ -384,7 +373,6 @@ async def safe_callback_reply(query, text, reply_markup=None, retries: int = 3):
         except UnicodeEncodeError as e:
             logger.error("Unicode error in callback reply: %s", e)
             text = text.encode("ascii", errors="replace").decode("ascii")
-            text = _clip_telegram_text(text)
             return await query.message.reply_text(text, reply_markup=reply_markup)
     return None
 
@@ -401,7 +389,7 @@ async def edit_loading_placeholder(msg, text: str) -> bool:
     if not msg:
         return False
     try:
-        await msg.edit_text(_clip_telegram_text(fmt_loading(text)))
+        await msg.edit_text(fmt_loading(text))
         return True
     except Exception as e:
         logger.debug("Failed to edit loading placeholder: %s", e)
@@ -519,7 +507,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id=user_id,
         source_interface="telegram",
         input_text=text,
-        trace_id=trace_id,
     )
     task_id = task.task_id
 
@@ -532,12 +519,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text[:100],
     )
 
+    # ✅ FIX: trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
     memory.save_episode(
         user_id=user_id,
         role="user",
         content=text,
         workspace_id=workspace_id,
-        trace_id=trace_id,
         metadata={
             "task_id": task_id,
             "trace_id": trace_id,
@@ -559,6 +546,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         start_ts = time.perf_counter()
+
         ui_mode_hint = detect_runtime_mode_ui(text)
 
         result = await planner.plan_and_answer(
@@ -567,7 +555,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             workspace_id=workspace_id,
             task_id=task_id,
             session_id=session_id,
-            trace_id=trace_id,
         )
 
         if not isinstance(result, dict):
@@ -576,6 +563,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         trace_id = result.get("trace_id") or trace_id
+
         latency_ms = int((time.perf_counter() - start_ts) * 1000)
         runtime_mode_str = result.get("runtime_mode", ui_mode_hint.value)
         task_type = result.get("task_type", "general")
@@ -647,7 +635,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         edited_err = False
         if loading_msg:
             with contextlib.suppress(Exception):
-                await loading_msg.edit_text(_clip_telegram_text(error_text))
+                await loading_msg.edit_text(error_text)
                 edited_err = True
 
         if not edited_err:
@@ -666,7 +654,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     raw_response = result.get("response", "")
     response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
-    final_text = _clip_telegram_text(response)
+    final_text = response[:4000]
 
     edited = False
     if loading_msg:
@@ -703,12 +691,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         eval_result = evaluator.evaluate_response(**eval_kwargs)
 
+        # ✅ FIX: trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
         memory.save_episode(
             user_id=user_id,
             role="assistant",
             content=raw_response,
             workspace_id=workspace_id,
-            trace_id=trace_id,
             metadata={
                 "workspace_id": workspace_id,
                 "task_id": task_id,
@@ -740,7 +728,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tokens_prompt=result.get("tokens_prompt", 0),
         tokens_completion=result.get("tokens_completion", 0),
         latency_ms=latency_ms,
-        trace_id=trace_id,
     )
     task_service.update_status(task_id, TaskState.completed)
 
@@ -750,19 +737,19 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data:
         return
-
+    
     await query.answer()
-
+    
     parts = query.data.split(":")
     if len(parts) != 3 or parts[0] != "fb":
         return
     _, task_id, vote = parts
     if not update.effective_user:
         return
-
+    
     user_id = str(update.effective_user.id)
     feedback_value = "positive" if vote == "up" else "negative"
-
+    
     try:
         evaluator.record_user_feedback(
             task_id=task_id,
@@ -771,7 +758,7 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logger.warning("Non-critical error in feedback/evaluator: %s", e, exc_info=True)
-
+    
     try:
         finder = getattr(memory, "find_episode_by_task_id", None)
         if callable(finder):
@@ -784,10 +771,10 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 memory.update_episode_metadata(episode["id"], metadata)
     except Exception as e:
         logger.debug("Fallback memory update failed: %s", e)
-
+    
     with contextlib.suppress(Exception):
         await query.edit_message_reply_markup(reply_markup=None)
-
+    
     logger.info("👍👎 Feedback recorded: %s (task %s, user %s)", feedback_value, task_id, user_id)
 
 
@@ -816,7 +803,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = "Search tool not available in this build."
         await safe_reply(
             update.message,
-            format_response_with_prefix(reply, strip_known_prefixes=False),
+            format_response_with_prefix(reply, strip_known_prefixes=False)[:4000],
         )
     except Exception:
         logger.exception("Search command failed")
@@ -874,7 +861,6 @@ if __name__ == "__main__":
     if not _validate_interface_config():
         logger.error("Interface config validation failed. Exiting.")
         sys.exit(1)
-
     app = build_application()
     logger.info(
         "Pith runtime initialized. Interface prefix: '%s', loading profile: '%s', voice_mode: '%s'",
