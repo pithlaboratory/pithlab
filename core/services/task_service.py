@@ -8,21 +8,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-from core.schemas import TaskRecord, TaskState
 from core.observability.trace_store import TraceStore
+from core.schemas import TaskRecord, TaskState
 
 logger = logging.getLogger(__name__)
 
 
 class TaskService:
     """
-    v1.6: minimal in-memory task service + SQLite persistence bridge.
+    v1.6.4: minimal in-memory task service + SQLite persistence bridge.
     Preserves domain logic while adding durable storage.
-    
+
     Trace integration (v1.1 cleanup):
-    - task_started() → при регистрации задачи в runtime (не при старте исполнения!)
-    - task_finished() / task_failed() → при смене статуса
+    - task_started() -> при регистрации задачи в runtime (не при старте исполнения!)
+    - task_finished() / task_failed() -> при смене статуса
     - Все trace-вызовы обёрнуты в try/except для graceful degradation
+    - trace_id correlation: хранится в metadata_json (без миграции БД, без присваивания атрибутов)
     """
 
     def __init__(self, db_path: str = "data/episodes.db") -> None:
@@ -30,7 +31,6 @@ class TaskService:
         self._tasks: Dict[str, TaskRecord] = {}
         self.db_path = db_path
         self._ensure_table()
-        # ✅ TraceStore инициализация
         self._trace_store = TraceStore(Path(db_path))
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -82,6 +82,7 @@ class TaskService:
         source_interface: str,
         input_text: str,
         intent_type: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ) -> TaskRecord:
         task = TaskRecord(
             workspace_id=workspace_id,
@@ -90,15 +91,15 @@ class TaskService:
             input_text=input_text,
             intent_type=intent_type,
         )
-        
-        # ✅ Сохраняем source_interface и intent_type в metadata для БД
+
         task.metadata["source_interface"] = source_interface
         if intent_type:
             task.metadata["intent_type"] = intent_type
+        if trace_id:
+            task.metadata["trace_id"] = trace_id
 
         self._tasks[task.task_id] = task
 
-        # --- SQLite persistence ---
         try:
             self._execute(
                 """
@@ -114,25 +115,31 @@ class TaskService:
                     task.input_text,
                     task.status.value,
                     None,
-                    task.created_at.isoformat() if task.created_at else datetime.utcnow().isoformat(),
-                    task.finished_at.isoformat() if getattr(task, "finished_at", None) else None,
+                    task.created_at.isoformat()
+                    if task.created_at
+                    else datetime.utcnow().isoformat(),
+                    task.finished_at.isoformat()
+                    if getattr(task, "finished_at", None)
+                    else None,
                     json.dumps(task.metadata or {}),
                 ),
             )
         except sqlite3.IntegrityError:
-            logger.warning("Task %s already exists in DB; possible duplicate create_task call", task.task_id)
+            logger.warning(
+                "Task %s already exists in DB; possible duplicate create_task call",
+                task.task_id,
+            )
 
-        # ✅ Trace: задача зарегистрирована в runtime (не обязательно начала исполняться!)
-        # NOTE: semantic gap — task_started ≠ execution started.
-        # Execution start is tracked via started_at in update_status(executing).
-        # This is a transitional design until TraceStore supports task_created event.
         try:
             self._trace_store.task_started(
                 task_id=task.task_id,
                 workspace_id=task.workspace_id,
             )
         except Exception:
-            logger.exception("TraceStore.task_started failed for task %s — continuing without trace", task.task_id)
+            logger.exception(
+                "TraceStore.task_started failed for task %s — continuing without trace",
+                task.task_id,
+            )
 
         return task
 
@@ -167,31 +174,46 @@ class TaskService:
             owner_id=row[2],
             input_text=row[3],
         )
-        
-        # ✅ Безопасное восстановление статуса с логированием fallback
+
         try:
             task.status = TaskState(row[4])
         except ValueError:
             task.status = TaskState.pending
-            logger.warning("Invalid status '%s' for task %s, defaulting to pending", row[4], task_id)
+            logger.warning(
+                "Invalid status '%s' for task %s, defaulting to pending",
+                row[4],
+                task_id,
+            )
 
         task.created_at = datetime.fromisoformat(row[6]) if row[6] else task.created_at
         task.finished_at = datetime.fromisoformat(row[7]) if row[7] else None
         task.metadata = metadata
 
-        # Restore bridge fields from metadata if present
         task.runtime_version = metadata.get("runtime_version") or row[5]
         task.model_id = metadata.get("model_id")
         task.model_lane = metadata.get("model_lane")
         task.cost_usd = metadata.get("cost_usd", 0.0)
         task.latency_ms = metadata.get("latency_ms", 0)
         task.error_message = metadata.get("error_message")
-        task.started_at = datetime.fromisoformat(metadata["started_at"]) if "started_at" in metadata else None
-        task.updated_at = datetime.fromisoformat(metadata["updated_at"]) if "updated_at" in metadata else None
-        
-        # ✅ Восстанавливаем source_interface и intent_type из metadata
-        task.source_interface = metadata.get("source_interface", getattr(task, "source_interface", None))
-        task.intent_type = metadata.get("intent_type", getattr(task, "intent_type", None))
+        task.started_at = (
+            datetime.fromisoformat(metadata["started_at"])
+            if "started_at" in metadata
+            else None
+        )
+        task.updated_at = (
+            datetime.fromisoformat(metadata["updated_at"])
+            if "updated_at" in metadata
+            else None
+        )
+
+        task.source_interface = metadata.get(
+            "source_interface",
+            getattr(task, "source_interface", None),
+        )
+        task.intent_type = metadata.get(
+            "intent_type",
+            getattr(task, "intent_type", None),
+        )
 
         self._tasks[task.task_id] = task
         return task
@@ -202,7 +224,6 @@ class TaskService:
         new_status: TaskState,
         error_message: Optional[str] = None,
     ) -> Optional[TaskRecord]:
-        # ✅ Fallback на БД, если задачи нет в памяти
         task = self._tasks.get(task_id)
         if not task:
             task = self.get_task(task_id)
@@ -216,7 +237,11 @@ class TaskService:
         if new_status == TaskState.executing and not task.started_at:
             task.started_at = now
 
-        if new_status in (TaskState.completed, TaskState.failed, TaskState.cancelled):
+        if new_status in (
+            TaskState.completed,
+            TaskState.failed,
+            TaskState.cancelled,
+        ):
             task.finished_at = now
 
         if error_message:
@@ -230,38 +255,51 @@ class TaskService:
 
         self._tasks[task_id] = task
 
-        # --- SQLite persistence via helper ---
         rows_affected = self._execute(
             "UPDATE tasks SET status = ?, completed_at = ?, metadata_json = ? WHERE id = ?",
             (
                 task.status.value,
-                task.finished_at.isoformat() if getattr(task, "finished_at", None) else None,
+                task.finished_at.isoformat()
+                if getattr(task, "finished_at", None)
+                else None,
                 json.dumps(task.metadata or {}),
                 task.task_id,
             ),
         )
         if rows_affected == 0:
-            logger.warning("UPDATE tasks affected 0 rows for task_id=%s — possible race or missing record", task_id)
+            logger.warning(
+                "UPDATE tasks affected 0 rows for task_id=%s — possible race or missing record",
+                task_id,
+            )
 
-        # ✅ Trace: финализация задачи (с защитой от падения)
         try:
             if new_status == TaskState.completed:
                 duration_ms = None
                 if task.started_at and task.finished_at:
-                    duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
-                self._trace_store.task_finished(task.task_id, duration_ms=duration_ms)
+                    duration_ms = int(
+                        (task.finished_at - task.started_at).total_seconds() * 1000
+                    )
+                self._trace_store.task_finished(
+                    task.task_id,
+                    duration_ms=duration_ms,
+                )
 
             elif new_status in (TaskState.failed, TaskState.cancelled):
                 duration_ms = None
                 if task.started_at and task.finished_at:
-                    duration_ms = int((task.finished_at - task.started_at).total_seconds() * 1000)
+                    duration_ms = int(
+                        (task.finished_at - task.started_at).total_seconds() * 1000
+                    )
                 self._trace_store.task_failed(
                     task.task_id,
                     error_type=new_status.value,
                     duration_ms=duration_ms,
                 )
         except Exception:
-            logger.exception("TraceStore finalization failed for task %s — task state updated, trace skipped", task_id)
+            logger.exception(
+                "TraceStore finalization failed for task %s — task state updated, trace skipped",
+                task_id,
+            )
 
         return task
 
@@ -276,8 +314,8 @@ class TaskService:
         tokens_prompt: int,
         tokens_completion: int,
         latency_ms: int,
+        trace_id: Optional[str] = None,
     ) -> Optional[TaskRecord]:
-        # ✅ Fallback на БД, если задачи нет в памяти
         task = self._tasks.get(task_id)
         if not task:
             task = self.get_task(task_id)
@@ -293,21 +331,24 @@ class TaskService:
         task.metadata["tokens_prompt"] = tokens_prompt
         task.metadata["tokens_completion"] = tokens_completion
 
-        # Enrich metadata for persistence bridge
         task.metadata["model_id"] = model_id
         task.metadata["model_lane"] = model_lane
         task.metadata["cost_usd"] = cost_usd
         task.metadata["latency_ms"] = latency_ms
         task.metadata["runtime_version"] = task.runtime_version
+        if trace_id:
+            task.metadata["trace_id"] = trace_id
 
         self._tasks[task_id] = task
 
-        # --- SQLite persistence via helper ---
         rows_affected = self._execute(
             "UPDATE tasks SET metadata_json = ? WHERE id = ?",
             (json.dumps(task.metadata or {}), task.task_id),
         )
         if rows_affected == 0:
-            logger.warning("UPDATE tasks metadata affected 0 rows for task_id=%s", task_id)
+            logger.warning(
+                "UPDATE tasks metadata affected 0 rows for task_id=%s",
+                task_id,
+            )
 
         return task
