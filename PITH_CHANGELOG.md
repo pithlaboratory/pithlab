@@ -194,6 +194,8 @@ When updating this file:
   - rollback path if relevant.
   ---
 
+---
+
 ## 2026-05-14
 
 ### Runtime context review and hardening plan
@@ -204,4 +206,24 @@ When updating this file:
   - ExecutionResult schema,
   - RuntimeConfig versioning,
   - ContextAssembler audit.
-- Scope: runtime hardening for v5.2, no expansion into Agent Company workflows or operator console in this phase.
+- Scope: runtime hardening for v5.2, no expansion into Agent Company workflows or operator console in this phase.[cite:90][cite:11]
+
+### TraceStore v1.1 — failure taxonomy and enriched task traces
+- Implemented minimal failure taxonomy:
+  - Added `core/observability/failure_taxonomy.py` with `FailureClass` enum (routing_failure, planner_failure, orchestrator_failure, tool_failure, memory_failure, policy_failure, approval_timeout, artifact_failure, quality_failure, cost_guardrail_violation, unknown_failure).
+- Extended `task_traces` schema via additive migration:
+  - Added columns `runtime_mode`, `task_type`, `failure_class`, `error_code`, `cost_estimate_usd`, `runtime_config_ver` to `data/episodes.db.task_traces` using `PRAGMA table_info` + `ALTER TABLE ... ADD COLUMN` (backward-compatible).[cite:90]
+- Updated `core/observability/trace_store.py`:
+  - `task_started(...)` now records workspace/runtime metadata (workspace_id, runtime_mode, task_type, runtime_config_ver) with COALESCE-safe updates.
+  - `task_finished(...)` now records `duration_ms` and `cost_estimate_usd`.
+  - `task_failed(...)` now records `error_type`, `failure_class`, `error_code`, `duration_ms`.[cite:90]
+- Updated `core/services/task_service.py`:
+  - Extended `update_status(...)` to accept `failure_class` and `error_code` (backward-compatible signature).
+  - On completed tasks: passes `task.cost_usd` into TraceStore, populating `cost_estimate_usd`.
+  - On failed/cancelled tasks: passes `error_type` (terminal status), resolved `FailureClass` (default `unknown_failure`), and optional `error_code` into TraceStore.[cite:90]
+- Verification:
+  - Smoke tests confirm:
+    - successful tasks write `status='ok'`, `duration_ms`, `cost_estimate_usd`,
+    - failed tasks write `status='error'`, `error_type`, `failure_class`, `error_code`, `task_type`.[cite:90]
+- Commit:
+  - `runtime: add failure taxonomy and enrich task traces` (core/observability/failure_taxonomy.py, core/observability/trace_store.py, core/services/task_service.py).
