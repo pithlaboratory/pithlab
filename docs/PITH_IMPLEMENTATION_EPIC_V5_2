@@ -1,0 +1,286 @@
+# PITH IMPLEMENTATION EPIC v5.2
+
+> **Purpose:** turn the aligned Pith doctrine and architecture into an execution-ready implementation epic for runtime hardening, observability, evaluation linkage, and Agent Company readiness.[1][2]
+> **Alignment:** `PRODUCT_DOCTRINE.md`, `PITH_KERNEL.md`, `PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`, `PITH_OBSERVABILITY_V1.md`, `PITH_MASTER_PLAN.md`, `IMPLEMENTATION_ROADMAP_V1.md`, `Pith Runtime Refactor Checklist v1`.[3][4]
+> **Status:** `ACTIVE`
+> **Last updated:** 2026-05-14
+> **Owner:** Core Runtime Engineering
+
+***
+
+## 1. Executive framing
+
+Pith is already defined consistently as a runtime-first, workspace-native orchestration system with governed autonomy, reusable traces, and Agent Company workflows layered on top of the core runtime.[1][2] The implementation gap is no longer product identity; it is execution fidelity: stable trace propagation, evaluation linkage, failure taxonomy adoption, cost attribution, and contract-level separation between Router, RuntimePlanner, ContextAssembler, Orchestrator, Memory, and governance surfaces.[5][2]
+
+This epic converts the current aligned documentation into a concrete build sequence for v5.2.[4][3] The priority is not feature breadth; the priority is making the runtime explainable, replayable, governable, and economically attributable before autonomy or commercial workflows expand further.[1][2]
+
+***
+
+## 2. Source mapping
+
+| Layer | Canonical statement | Implementation consequence |
+|---|---|---|
+| Product Doctrine | Pith sells continuity, orchestration, execution, observability, governance, and Agent Company outcomes.[3] | Runtime must persist state by workspace/task, attribute cost, and support billable workflows.[2] |
+| Kernel v1.1 | Work is organized around Tenant, Workspace, Task, Workflow, Artifact, MemoryRecord, Trace, RuntimeConfig, Skill, Department, BillableEvent.[1] | State schemas and service APIs must expose these as first-class runtime objects, not prompt fragments.[3] |
+| Runtime Context Protocol v1 | Context is assembled around work, not chat; policy and mode outrank memory and retrieval.[1] | `ContextAssembler` must return a structured package with pruning, mode, and trace signals, while `RuntimePlanner` owns mode/autonomy/config selection.[2] |
+| Observability v1 | Trace-first observability is required for debugging, evaluation, audits, and monetization.[2] | `TraceStore v1` must become reliable infrastructure, not a partial log side-path.[5] |
+| Master Plan v5.2 | Runtime-first baseline expands toward Agent Company OS and governed intelligence inside workspaces.[3] | Agent Company workflows must reuse the same runtime, trace, approval, cost, and policy paths as core tasks.[1][2] |
+
+***
+
+## 3. Epic goals
+
+### 3.1 Primary goals
+
+- Stabilize the runtime around explicit contracts for Router, RuntimePlanner, ContextAssembler, Orchestrator, Memory, Evaluator, TaskService, ArtifactStore, and TraceStore.[4][2]
+- Make every material execution path attributable by `trace_id`, `workspace_id`, `task_id`, `runtime_mode`, `runtime_config_version`, `failure_class`, and cost signals.[1][2]
+- Connect evaluation and governance to production traces so regressions, unsafe autonomy, and expensive failure loops become measurable and reviewable.[6][2]
+- Prepare the minimum substrate for Agent Company billing and department workflows without bypassing the core runtime.[1][3]
+
+### 3.2 Non-goals
+
+- No full multi-tenant SaaS platform in this epic.[4]
+- No deep autonomous rollout beyond L0-L1 default operation; L2 remains gated by trace quality, evaluator maturity, and review controls.[1][2]
+- No cosmetic dashboard overbuild before trace/event contracts are stable.[5][2]
+
+***
+
+## 4. Workstreams
+
+### 4.1 Runtime contracts
+
+This workstream hardens ownership boundaries between runtime components so decisions are reproducible and debuggable instead of smeared across modules.[4][3]
+
+**Deliverables:**
+- `Router` selects lane/model path only; it does not own topology, memory policy, or governance decisions.[3]
+- `RuntimePlanner` selects `task_type`, `runtime_mode`, `autonomy_level`, and execution topology; it requests context through `ContextAssembler` and writes context-profile trace signals.[1]
+- `ContextAssembler` builds a structured context package using policy-first ordering and explicit pruning metadata.[1]
+- `Orchestrator` coordinates agent/department execution through registry-backed contracts, not magic strings or hidden flow logic.[2]
+
+**Acceptance criteria:**
+- Each component has an explicit contract section in code and docs.
+- No hidden model selection in planner/orchestrator paths.
+- No raw prompt-only context path bypassing `ContextAssembler` for normal runtime execution.
+
+### 4.2 TraceStore v1 hardening
+
+Observability v1 states that traces, not scattered logs, are the main reconstruction unit for runtime behavior.[2] The current task-level backbone must be upgraded from partial plumbing to reliable trace infrastructure while keeping overhead controlled on critical runtime paths.[5]
+
+**Deliverables:**
+- Stable `trace_id` propagation from interface entry to TaskService, planner, orchestrator, tools, models, evaluation, artifact persistence, and completion/failure paths.[2]
+- `task_traces` minimum schema expanded toward the trace vocabulary already defined in Observability v1: `trace_id`, `tenant_id`, `workspace_id`, `task_id`, `workflow_id`, `runtime_mode`, `task_type`, `status`, `duration_ms`, `failure_class`, `error_code`, `cost_estimate_usd`, and versioning fields.[2]
+- Structured runtime events for planner, orchestrator, tool calls, memory ops, approvals, and billable events.[2]
+- Safe summaries and hashes instead of raw secrets or unsafe payload logging.[2]
+
+**Acceptance criteria:**
+- A single task can be reconstructed end-to-end from trace records.
+- Failed executions always produce a trace with failure metadata.
+- Trace writes remain lightweight enough not to distort the critical path materially.[5]
+
+### 4.3 Failure taxonomy adoption
+
+A stable failure taxonomy is required for postmortems, evaluation datasets, and operational learning.[2] Without typed failures, regression tracking collapses into generic exceptions and becomes unfit for governance or automated analysis.[6][2]
+
+**Deliverables:**
+- Canonical failure classes implemented across critical paths: `routing_failure`, `planner_failure`, `orchestrator_failure`, `tool_failure`, `memory_failure`, `policy_failure`, `approval_timeout`, `artifact_failure`, `quality_failure`, `cost_guardrail_violation`, `unknown_failure`.[2]
+- Exception normalization helpers that map internal errors to `failure_class`, `error_code`, and `error_summary`.
+- Failure-class emission in trace events and task terminal state.
+- Failure taxonomy consumed by `FailureMiner` and reflected in dashboard/failure views.
+
+**Acceptance criteria:**
+- Critical components never terminate with an unclassified failure.
+- Recurring failure clusters can be grouped by class and count.
+
+### 4.4 Evaluator linkage
+
+Observability exists partly because production traces must be reusable as evaluation cases and learning signals.[2] Evaluation should therefore become trace-native instead of remaining a loosely coupled scoring step.[6]
+
+**Deliverables:**
+- Evaluator consumes `trace_id` / `task_id` anchored data and writes results back as structured evaluation records.
+- Baseline evaluation fields include task outcome, quality score, context-use score, persona-drift signal, risk/uncertainty signals, and optional business-effectiveness markers.[2]
+- Evaluation records link to `runtime_config_version`, `failure_class`, and cost data to support regression analysis.[6][2]
+- Production traces can be sampled into replay/evaluation suites.
+
+**Acceptance criteria:**
+- Every completed task has either an evaluation result or an explicit evaluation skip reason.
+- Evaluation dashboards can slice results by runtime version, mode, workspace, and failure taxonomy.
+
+### 4.5 Cost and billing attribution
+
+Pith doctrine and observability both require cost to be attributable by workflow, workspace, department, agent, tool, and model because governance without cost visibility remains incomplete.[6][2] This is also the minimum foundation for monetized Agent Company workflows.[3]
+
+**Deliverables:**
+- Cost telemetry written per trace and aggregated per workspace, task, workflow, department, tool, and model.[2]
+- `BillableEvent` minimum schema and event emission for first commercial workflow types such as lead, campaign, research brief, and delivery package.[3]
+- Trace linkage via `billable_event_refs` and task/workflow linkage to billing outcomes.[2]
+- Budget guardrail events visible in the same trace path as execution decisions.[1][2]
+
+**Acceptance criteria:**
+- A department workflow can be priced and explained from trace + billing data alone.
+- Cost spikes are attributable to a concrete branch, tool path, or model path.
+
+### 4.6 Agent Company runtime compliance
+
+Agent Company is a layer on top of the runtime, not an alternate execution system.[1][3] Department workflows therefore must inherit the same trace, policy, autonomy, memory, and artifact rules as ordinary tasks.[2]
+
+**Deliverables:**
+- `Department` and `department_role` propagated into runtime events and traces when department workflows execute.[2]
+- Department agents run through the same TaskService / Workflow / Artifact / PolicyDecision paths as core runtime execution.[1]
+- Approval checkpoints, autonomy levels, and business outcomes emitted as observability signals.[6][2]
+- No shadow state or side-channel storage inside department implementations.
+
+**Acceptance criteria:**
+- A Sales/Marketing/Research workflow is inspectable using the same trace explorer model as a standard engineering task.
+- Department execution cannot bypass policy enforcement or trace generation.
+
+### 4.7 Operator surfaces v1
+
+The data model should be shaped so the first operator console can expose trace, workflow, cost, failure, and memory views without redesigning storage later.[2]
+
+**Deliverables:**
+- Minimal operator-readable views over traces, failures, costs, and memory retrieval behavior.[2]
+- Search by `trace_id`, `task_id`, `workspace_id`, and `tenant_id`.
+- Failure grouping by taxonomy and recurrence.
+- Basic cost rollups and recent task/workflow lists.
+
+**Acceptance criteria:**
+- Priority debugging paths no longer require grepping multiple log files manually.
+- Operators can inspect recent failed workflows and see route, cost, and failure summary in one place.
+
+***
+
+## 5. Phased execution
+
+### Phase A — Contract hardening
+
+**Objective:** align component ownership with the architecture before adding more capability.[4][3]
+
+**Tasks:**
+- Freeze canonical boundaries for Router, RuntimePlanner, ContextAssembler, Orchestrator, Memory, Evaluator.
+- Remove hidden model selection and prompt assembly shortcuts.
+- Add contract docstrings and architecture comments where boundaries are still violated.
+
+**Exit criteria:**
+- Each runtime component has a single primary responsibility.
+- Boundary violations are either removed or explicitly marked as temporary debt.
+
+### Phase B — Trace backbone stabilization
+
+**Objective:** make `TraceStore v1` dependable enough for debugging and evaluation.[2]
+
+**Tasks:**
+- Propagate `trace_id` everywhere.
+- Expand `task_traces` schema.
+- Emit structured events for planner/orchestrator/tool/memory paths.
+- Normalize failures into taxonomy classes.
+
+**Exit criteria:**
+- Every task produces a reconstructible trace.
+- Failed tasks are auditable.
+
+### Phase C — Evaluation and governance linkage
+
+**Objective:** connect runtime decisions to measurable quality and policy outcomes.[6][2]
+
+**Tasks:**
+- Link evaluator results to traces and runtime versions.
+- Persist policy decisions and approval events in trace paths.
+- Surface budget and autonomy decisions in observability data.
+
+**Exit criteria:**
+- Regressions can be detected by version, mode, and failure class.
+- Policy decisions are inspectable after the fact.
+
+### Phase D — Cost and Agent Company enablement
+
+**Objective:** enable monetizable workflows without bypassing runtime integrity.[3][2]
+
+**Tasks:**
+- Add billable event primitives.
+- Link cost telemetry to trace/workflow/department.
+- Ensure department workflows use the canonical runtime path.
+
+**Exit criteria:**
+- At least one commercial workflow type is fully attributable from entrypoint to billable outcome.
+
+### Phase E — Operator console v1
+
+**Objective:** expose runtime state in a compact but decision-useful way.[2]
+
+**Tasks:**
+- Build trace explorer and failure view.
+- Add cost/workspace rollups.
+- Add recent tasks and memory usage diagnostics.
+
+**Exit criteria:**
+- Priority operational debugging can happen through operator surfaces rather than raw file spelunking.
+
+***
+
+## 6. Task list
+
+### 6.1 Router / planner / context
+
+- [ ] Remove any remaining hardcoded model IDs outside Model Plane.
+- [ ] Ensure Router writes route decision summaries and fallback outcomes into trace events.[2]
+- [ ] Ensure RuntimePlanner writes `runtime_mode`, `task_type`, `autonomy_level`, and `runtime_config_version` into trace context.[1]
+- [ ] Ensure ContextAssembler returns the structured package defined in Runtime Context Protocol v1, including `pruning_applied` and `token_estimate`.[1]
+- [ ] Ensure no NORMAL or DIAGNOSTICS path can accidentally expand into manifesto-style self-analysis without explicit VISION trigger.[1]
+
+### 6.2 TraceStore / events
+
+- [ ] Add or confirm persistent `trace_id` on Task creation.
+- [ ] Expand `task_traces` schema to include the minimum fields from Observability v1.[2]
+- [ ] Add structured event emission helpers for planner, orchestrator, tool, memory, approval, evaluation, and billing transitions.[2]
+- [ ] Persist `failure_class`, `error_code`, `error_summary` on failure paths.[2]
+- [ ] Add safe payload summarization/hashing strategy for tools and model calls.[2]
+
+### 6.3 Memory / artifacts
+
+- [ ] Ensure memory reads/writes are observable with workspace filter, retrieval scope, and confidence/relevance fields.[2]
+- [ ] Ensure artifact saves are idempotent and trace-linked.[1]
+- [ ] Ensure retrieved memory/artifacts are filtered by tenant/workspace isolation rules.[1]
+
+### 6.4 Evaluator / evolution
+
+- [ ] Add `evaluation_results` store or equivalent linkage keyed by `trace_id` and `task_id`.
+- [ ] Persist baseline evaluation fields: outcome, quality score, context-use score, persona drift, risk/uncertainty, business-effectiveness where available.[6][2]
+- [ ] Feed failure taxonomy and evaluation outputs into FailureMiner.
+- [ ] Link accepted patch candidates and runtime version changes back to originating failures/traces.[1]
+
+### 6.5 Cost / billing / departments
+
+- [ ] Record model/tool cost estimates at trace level.[2]
+- [ ] Introduce `BillableEvent` schema and references.
+- [ ] Add `department` and `department_role` to trace schema and runtime events for department workflows.[2]
+- [ ] Emit approval checkpoints and business outcome categories in Agent Company execution.[6][2]
+
+### 6.6 Operator surfaces
+
+- [ ] Implement trace explorer view over `task_traces` and linked events.[2]
+- [ ] Implement failure grouping by taxonomy.
+- [ ] Implement cost rollups by model/tool/workspace/department.[2]
+- [ ] Implement recent tasks/workflows with route/failure summaries.
+
+***
+
+## 7. Exit criteria for the epic
+
+This epic is complete when the following are all true:
+
+- Every priority runtime path is reconstructible through a stable trace contract rather than scattered logs alone.[2]
+- Runtime components follow explicit ownership boundaries that match Kernel and Runtime Context Protocol semantics.[1][3]
+- Evaluation is trace-linked and version-aware.[6][2]
+- Failure taxonomy is stable enough for recurrence analysis and postmortems.[2]
+- Cost and billable outcomes are attributable by workspace, workflow, and department.[2]
+- Agent Company workflows do not bypass core runtime, policy, or observability infrastructure.[1][3]
+
+***
+
+## 8. Immediate next actions
+
+1. Harden `TraceStore v1` and complete `trace_id` propagation first; governance without traceability remains theoretical at runtime.[1][2]
+2. Make failure taxonomy mandatory in planner/orchestrator/tool/memory failure paths.[2]
+3. Link Evaluator outputs to traces and runtime versions before expanding autonomy or commercial workflow complexity.[6][2]
+4. Add minimal billable-event support only after trace and cost attribution are reliable enough to explain workflow economics.[3][2]
+5. Build the first operator-facing trace/failure/cost views on top of the stabilized contracts, not before.[5][2]
