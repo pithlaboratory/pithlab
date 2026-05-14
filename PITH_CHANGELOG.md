@@ -192,3 +192,16 @@ When updating this file:
   - affected component,
   - risk level,
   - rollback path if relevant.
+  ---
+
+## 2026-05-14
+
+### Runtime context review and hardening plan
+- Added `docs/PITH_RUNTIME_CONTEXT_REVIEW_2026-05-14.md` as the first structured runtime context review and hardening baseline.
+- Documented initial Patch / Execution Plan for:
+  - TraceStore schema (task_traces runtime_mode, task_type, failure_class, error_code, cost_estimate_usd, runtime_config_ver),
+  - FailureClass enum introduction,
+  - ExecutionResult schema,
+  - RuntimeConfig versioning,
+  - ContextAssembler audit.
+- Scope: runtime hardening for v5.2, no expansion into Agent Company workflows or operator console in this phase.
