@@ -31,12 +31,14 @@ def normalize_log_level(value: str) -> str:
     return value if value in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"} else "INFO"
 
 
-TG_TOKEN = require_env("TG_TOKEN", "TGTOKEN")
+TG_TOKEN = require_env("TELEGRAM_BOT_TOKEN", "TG_TOKEN", "TGTOKEN")
 OPENROUTER_KEY = require_env("OPENROUTER_KEY")
+
 
 OWNER_CHAT_ID = optional_env("OWNER_CHAT_ID")
 GITHUB_TOKEN = optional_env("GITHUB_TOKEN")
 TIMEWEB_KEY = optional_env("TIMEWEB_KEY")
+
 
 PITH_MODE = normalize_mode(optional_env("PITH_MODE", default="prod"))
 LOG_LEVEL = normalize_log_level(optional_env("LOG_LEVEL", default="INFO"))

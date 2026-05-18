@@ -2,7 +2,7 @@
 Pith v5 — Runtime Planner
 Author: Pith Lab
 License: MIT
-Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.3 Phase 1.5 Final
+Status: L0/L1 autonomy enforced | Workspace-aware | Trace-ready | v1.1.4 Trace-Correlation
 
 Governing docs:
 - docs/PITH_ARCHITECTURE_NORTH_STAR_V2.md
@@ -117,6 +117,7 @@ class RuntimePlanner:
         workspace_id: Optional[str] = None,
         task_id: Optional[str] = None,
         session_id: Optional[str] = None,
+        trace_id: Optional[str] = None,  # ✅ Added for correlation
     ) -> Dict[str, Any]:
         """
         Workspace-native entry point.
@@ -166,19 +167,21 @@ class RuntimePlanner:
         if runtime_mode in (RuntimeMode.DIAGNOSTICS, RuntimeMode.VISION) and not is_complex:
             return await self._run_direct_llm_flow(
                 prompt, context_str, text, mode=router_mode,
-                runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags
+                runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags,
+                trace_id=trace_id,
             )
 
         if is_complex:
             # Option A: keep existing signature. Phase 2 will add assembled_context here.
             return await self._run_orchestrator_flow(
                 prompt, context_str, task_type=task_type, goal_tags=goal_tags,
-                runtime_mode=runtime_mode.value,
+                runtime_mode=runtime_mode.value, trace_id=trace_id,
             )
 
         return await self._run_direct_llm_flow(
             prompt, context_str, text, mode=router_mode,
-            runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags
+            runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags,
+            trace_id=trace_id,
         )
 
     async def _run_orchestrator_flow(
@@ -188,6 +191,7 @@ class RuntimePlanner:
         task_type: str,
         goal_tags: List[str],
         runtime_mode: str = "normal",
+        trace_id: Optional[str] = None,  # ✅ Added for correlation
     ) -> Dict[str, Any]:
         try:
             agent_results = await orchestrator.run_async(prompt)
@@ -206,6 +210,7 @@ class RuntimePlanner:
                 "task_type": task_type,
                 "goal_tags": goal_tags,
                 "execution_path": "orchestrated",
+                "trace_id": trace_id,  # ✅ Returned for correlation
             }
         except Exception as e:
             logger.exception("Orchestrator flow failed")
@@ -223,6 +228,7 @@ class RuntimePlanner:
                 "task_type": task_type,
                 "goal_tags": goal_tags,
                 "execution_path": "orchestrated",
+                "trace_id": trace_id,  # ✅ Returned even on error
             }
 
     async def _run_direct_llm_flow(
@@ -234,6 +240,7 @@ class RuntimePlanner:
         runtime_mode: str = "normal",
         task_type: str = "general",
         goal_tags: Optional[List[str]] = None,
+        trace_id: Optional[str] = None,  # ✅ Added for correlation
     ) -> Dict[str, Any]:
         try:
             if mode is None:
@@ -267,6 +274,7 @@ class RuntimePlanner:
                 "task_type": task_type,
                 "goal_tags": goal_tags or [],
                 "execution_path": "direct",
+                "trace_id": trace_id,  # ✅ Returned for correlation
             }
         except Exception as e:
             logger.exception("Direct LLM flow failed")
@@ -284,4 +292,5 @@ class RuntimePlanner:
                 "task_type": task_type,
                 "goal_tags": goal_tags or [],
                 "execution_path": "direct",
+                "trace_id": trace_id,  # ✅ Returned even on error
             }
