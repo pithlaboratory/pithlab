@@ -34,6 +34,7 @@ os.environ.setdefault("LC_ALL", "ru_RU.UTF-8")
 import sys
 import inspect
 import uuid
+import re  # ✅ Added for governance regex guards
 
 try:
     enc_out = getattr(sys.stdout, "encoding", None)
@@ -244,6 +245,64 @@ MSG_BUDGET_WARNING = _fmt_sys(
     "⚠️ Budget warning: spending limit approaching. Switching to cost-optimized models."
 )
 
+# === TELEGRAM GOVERNANCE GUARDS ===
+TELEGRAM_DANGEROUS_DELETE_REPLY = _fmt_sys(
+    "Я не могу удалить все ваши задачи, данные или историю диалогов через Telegram.\n\n"
+    "Такие действия требуют отдельного подтверждения и безопасного интерфейса с более высоким уровнем доступа.\n\n"
+    "Я могу помочь безопасно:\n"
+    "• уточнить, что именно вы хотите удалить или изменить;\n"
+    "• подготовить список на удаление для подтверждения;\n"
+    "• подсказать, где это делается через подходящий интерфейс."
+)
+
+TELEGRAM_DANGEROUS_DELETE_PATTERNS = [
+    re.compile(r"\bудали\b.*\b(все|всё)\b.*\b(задач\w*|данн\w*|истори\w*|диалог\w*)\b", re.IGNORECASE),
+    re.compile(r"\bудали\b.*\b(истори\w*|диалог\w*|данн\w*)\b", re.IGNORECASE),
+    re.compile(r"\bсотри\b.*\b(все|всё)\b.*\b(задач\w*|данн\w*|истори\w*|диалог\w*)\b", re.IGNORECASE),
+    re.compile(r"\bочисти\b.*\b(все|всё)\b.*\b(задач\w*|данн\w*|истори\w*|диалог\w*)\b", re.IGNORECASE),
+    re.compile(r"\bdelete\b.*\b(all|everything|tasks?|data|history)\b", re.IGNORECASE),
+    re.compile(r"\berase\b.*\b(all|everything|tasks?|data|history)\b", re.IGNORECASE),
+    re.compile(r"\bremove\b.*\b(all|everything|tasks?|data|history)\b", re.IGNORECASE),
+]
+
+
+def is_telegram_dangerous_delete_request(text: str) -> bool:
+    if not text:
+        return False
+
+    normalized = " ".join(str(text).split()).strip()
+    if not normalized:
+        return False
+
+    return any(pattern.search(normalized) for pattern in TELEGRAM_DANGEROUS_DELETE_PATTERNS)
+
+
+async def maybe_handle_governance_refusal(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+) -> bool:
+    if not update.message or not update.effective_user or not update.effective_chat:
+        return False
+
+    if not is_telegram_dangerous_delete_request(text):
+        return False
+
+    user_id = str(update.effective_user.id)
+    chat_id = update.effective_chat.id
+
+    logger.warning(
+        "GOVERNANCE_REFUSAL telegram dangerous_delete user=%s chat=%s text=%r",
+        user_id,
+        chat_id,
+        text[:500],
+    )
+
+    await send_typing_safe(context, chat_id)
+    await safe_reply(update.message, TELEGRAM_DANGEROUS_DELETE_REPLY)
+    return True
+
+
 # === CORE RUNTIME BINDINGS ===
 memory = get_memory()
 artifact_service = ArtifactService()
@@ -290,6 +349,8 @@ def format_response_with_prefix(text: str, strip_known_prefixes: bool = True) ->
                 break
     return enforce_voice_mode(text) if VOICE_MODE == "runtime" else text
 
+
+# ✅ NEW: Filter internal runtime markers from user-visible output
 INTERNAL_RUNTIME_PREFIXES = (
     "SKIP:",
     "TOOL_SKIP:",
@@ -300,17 +361,15 @@ INTERNAL_RUNTIME_PREFIXES = (
 
 
 def strip_internal_runtime_lines(text: str) -> str:
+    """Remove internal orchestration/debug lines from user-facing response."""
     if not text:
         return text
 
-    cleaned_lines: list[str] = []
+    cleaned_lines: List[str] = []
     for line in str(text).splitlines():
         stripped = line.strip()
         if any(stripped.startswith(prefix) for prefix in INTERNAL_RUNTIME_PREFIXES):
-            logger.warning(
-                "Dropping internal runtime line from Telegram output: %s",
-                stripped,
-            )
+            logger.warning("Dropping internal runtime line from Telegram output: %s", stripped)
             continue
         cleaned_lines.append(line)
 
@@ -318,6 +377,7 @@ def strip_internal_runtime_lines(text: str) -> str:
 
 
 def normalize_user_visible_response(text: str) -> str:
+    """Apply all user-facing normalizations: prefix strip + internal marker filter."""
     text = format_response_with_prefix(text, strip_known_prefixes=True)
     text = strip_internal_runtime_lines(text)
     return text.strip()
@@ -507,6 +567,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not text:
         await safe_reply(update.message, MSG_EMPTY)
+        return
+
+    # ✅ Governance guard: block dangerous delete requests via Telegram
+    if await maybe_handle_governance_refusal(update, context, text):
         return
 
     if len(text) > MAX_INPUT_CHARS:
@@ -703,6 +767,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.debug("Loading task cleanup error: %s", e)
 
+    # ✅ FIXED: Filter internal runtime markers from user-visible response
     raw_response = result.get("response", "")
     prefixed_response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
     response = normalize_user_visible_response(raw_response)
@@ -758,7 +823,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         memory.save_episode(
             user_id=user_id,
             role="assistant",
-            content=raw_response,
+            content=raw_response,  # keep raw for diagnostics
             workspace_id=workspace_id,
             metadata={
                 "workspace_id": workspace_id,
@@ -777,6 +842,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "runtime_mode": runtime_mode_str,
                 "task_type": task_type,
                 "goal_tags": goal_tags,
+                "internal_markers_stripped": internal_markers_stripped,  # ✅ observability flag
             },
         )
     except Exception as e:
