@@ -19,6 +19,12 @@ def load_and_validate():
     return data
 
 
+def clean_multiline_text(value: str) -> str:
+    if not isinstance(value, str):
+        return value
+    return value.strip().strip('"').replace("\\n", "\n").strip()
+
+
 def build_payload(golden: dict) -> dict:
     entry = golden["entrypoint"]
     inputs = golden["inputs"]
@@ -27,14 +33,22 @@ def build_payload(golden: dict) -> dict:
     task_id = "TASK_PLACEHOLDER"
     workspace_id = "WORKSPACE_PLACEHOLDER"
 
+    initial_context = []
+    for item in inputs.get("initial_context", []):
+        initial_context.append({
+            "type": item["type"],
+            "role": item["role"],
+            "content": clean_multiline_text(item["content"]),
+        })
+
     payload = {
         "trace_id": trace_id,
         "task_id": task_id,
         "workspace_id": workspace_id,
         "runtime_mode": entry["runtime_mode"],
         "task_type": entry["task_type"],
-        "user_query": inputs["user_query"],
-        "initial_context": inputs.get("initial_context", []),
+        "user_query": clean_multiline_text(inputs["user_query"]),
+        "initial_context": initial_context,
     }
     return payload
 
@@ -62,6 +76,7 @@ def fake_evaluation_record(golden: dict) -> dict:
 def main():
     golden = load_and_validate()
     print("Golden workflow loaded and validated.")
+
     payload = build_payload(golden)
     print("\n=== Runtime payload (stub) ===")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
