@@ -168,7 +168,7 @@ Examples:
 
 - were approval gates triggered when required,
 - were forbidden actions blocked,
-- was autonomy level (L0–L3) respected,
+- was autonomy level (Tier 0–4) respected,
 - were risk thresholds exceeded.
 
 ---
@@ -258,6 +258,8 @@ For v1, every evaluated task/workflow must produce a structured `EvaluationRecor
 - `quality_score` (0.0–1.0 or 1–5, linked to `rubric_version`)
 - `cost_per_workflow` (pulled from Observability)
 - `policy_violation` (bool) + `failure_class` (if applicable)
+- `autonomy_tier` (current execution tier, e.g. `Tier 2`)
+- `requested_autonomy_tier` (tier requested by agent/task)
 
 **Metadata:**
 - `eval_source` (`human` / `model` / `mixed`)
@@ -265,6 +267,18 @@ For v1, every evaluated task/workflow must produce a structured `EvaluationRecor
 - `created_at`
 
 > **Traceability Rule:** Any `EvaluationRecord` must be resolvable to a single trace in `TraceStore` via `trace_id` and `task_id`. Evaluation must not introduce independent primary keys without linking them back to the runtime trace.
+
+> **Envelope Linkage:**
+> EvaluationRecord v1 должен быть восстановим из комбинации:
+> - trace events из `TraceStore`,
+> - snapshot'а runtime‑envelope для задачи (`PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`).
+>
+> Минимальные связи:
+> - governance‑сигналы (`policy_id`, `autonomy_tier`, `approval_state`) → из `governance` блока envelope,
+> - artifact‑ссылки и business outcomes → из `artifacts` и department‑level контекстов,
+> - billing‑поля (`billing_unit`, `billing_context`, `runtime_cost_estimate`) → из `billing` блока.
+>
+> EvaluationRecord не дублирует весь envelope, но содержит достаточно ссылок, чтобы по `trace_id` и `task_id` можно было поднять соответствующий envelope‑snapshot и воспроизвести контекст решения.
 
 ---
 
@@ -309,7 +323,7 @@ Includes signals derived from runtime traces:
 - incident rate,
 - operator review outcomes.
 
-> **Observability Linkage:** All evaluation metrics in v1 must be derivable from `TraceStore` fields. Any `EvaluationRecord` must reference at minimum: `trace_id`, `task_id`, `workspace_id`, `runtime_mode`, `task_type`, `failure_class`, and `cost_estimate_usd`.
+> **Observability Linkage:** All evaluation metrics in v1 must be derivable from `TraceStore` fields and event families defined in `PITH_OBSERVABILITY_V1.md` (Core Runtime, Planner/Orchestrator, Tool/Memory, Governance, Artifact, Billing). Any `EvaluationRecord` must reference at minimum: `trace_id`, `task_id`, `workspace_id`, `runtime_mode`, `task_type`, `failure_class`, and `cost_estimate_usd`.
 
 ### 6.3 Post-Workflow Review
 
@@ -626,6 +640,6 @@ Pith should not scale autonomy, monetization, or department complexity without a
 
 **Pith Lab · Москва · 2026**
 
-*Версия v1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
+*Версия v1.1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
 
 </div>
