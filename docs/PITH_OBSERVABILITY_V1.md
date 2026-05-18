@@ -44,11 +44,11 @@ As a result, failure can happen in many layers:
 - failed department handoff,
 - broken memory retrieval,
 - inflated model/tool costs,
-- low-quality output that still appears “successful,”
+- low-quality output that still appears "successful,"
 - autonomy beyond intended policy,
 - incomplete or misleading traces.
 
-Without strong observability, Pith cannot be debugged, trusted, evaluated, or safely monetized.[web:2080][web:2083]
+Without strong observability, Pith cannot be debugged, trusted, evaluated, or safely monetized.
 
 ---
 
@@ -61,7 +61,7 @@ Core Runtime components (Planner, Orchestrator, TaskService, Tool/Model Plane, M
 
 ### 3.2 Trace-first
 
-Every meaningful workflow should be reconstructible as a trace, not just as scattered logs.[web:2087]
+Every meaningful workflow should be reconstructible as a trace, not just as scattered logs.
 
 Trace is the main reconstruction and debugging unit for:
 
@@ -99,7 +99,7 @@ Every expensive action must be attributable:
 - by trace,
 - by department,
 - by agent role,
-- by tool/model.[web:2086]
+- by tool/model.
 
 ### 3.6 Governance-compatible
 
@@ -111,13 +111,17 @@ Observability must support:
 - postmortems,
 - rollback analysis.
 
+> **Role boundary**: Observability does not decide policy or quality; it exposes stable signals that `PITH_EVALUATION_V1` and `PITH_GOVERNANCE_V1` consume to make those decisions.
+
 ### 3.7 Evaluation-ready
 
 Observability data should be directly reusable by the evaluation pipeline:
 
 - traces can be sampled into evaluation suites,
 - metrics and failure taxonomy feed evaluation dashboards,
-- production regressions can be replayed and compared against previous model/prompt versions.[web:2079][web:2083]
+- production regressions can be replayed and compared against previous model/prompt versions.
+
+> Observability provides the raw trace/event data; evaluation defines sampling strategies, metrics, and regression tests on top of that data.
 
 ---
 
@@ -148,6 +152,8 @@ A trace should show:
 
 Traces should be compatible with standard tracing patterns (span/parent_span semantics) to integrate with external tooling (e.g. OTel‑style backends).
 
+> **Canonical store for v1**: `TraceStore v1` is the canonical runtime trace store for Pith v5. Any core runtime component (Planner, Orchestrator, TaskService, Tool/Model Plane, Memory) must emit its minimum trace events via `TraceStore`. Additional logging/metrics are allowed but do not replace the TraceStore contract.
+
 ### 4.2 Structured Event Stream
 
 Every major runtime transition should emit structured events.
@@ -171,7 +177,7 @@ Examples:
 - `workflow_completed`
 - `workflow_failed`
 
-Events should follow a stable schema so they can be shipped to log/metric systems and reused by evaluation tools.[web:2084][web:2088]
+Events should follow a stable schema so they can be shipped to log/metric systems and reused by evaluation tools.
 
 ### 4.3 Metrics Layer
 
@@ -218,40 +224,38 @@ It means reconstructing runtime decisions and externally visible behavior.
 
 ## 5. Core Trace Model
 
-The minimum runtime trace model should include:
+The minimum runtime trace model should include the following fields. Fields are categorized by v1 requirement level.
 
-- `trace_id`
-- `tenant_id`
-- `workspace_id`
-- `task_id`
-- `workflow_id` (if applicable)
-- `session_id` (if applicable)
-- `entrypoint`
-- `runtime_mode`
-- `task_type`
-- `department`
-- `department_role` (agent role within department)
-- `agent`
-- `step_id`
-- `parent_step_id`
-- `event_type`
-- `status`
-- `timestamp`
-- `duration_ms`
-- `model_name` (if applicable)
-- `tool_name` (if applicable)
-- `token_usage_in`
-- `token_usage_out`
-- `cost_estimate_usd`
-- `cost_actual_usd`
-- `artifact_refs`
-- `billable_event_refs`
-- `failure_class` (from failure taxonomy)
-- `error_code`
-- `error_summary`
+### 5.1 Required in v1 (non‑nullable for runtime events)
 
-This is the minimum viable trace vocabulary.
-It may be extended later, but the system should converge around a stable trace contract early.[web:2082][web:2087]
+| Field | Description | Scope |
+|-------|-------------|-------|
+| `trace_id` | Unique correlation ID for the trace | Global |
+| `workspace_id` | Workspace boundary (tenant may be empty in dev) | Workspace |
+| `task_id` | Task identifier (for task‑scoped events) | Task |
+| `event_type` | Type of event (e.g. `planner_started`, `tool_invoked`) | Event |
+| `status` | Outcome status (`ok`, `failed`, `cancelled`) | Event |
+| `timestamp` | ISO‑8601 timestamp of the event | Event |
+| `duration_ms` | Duration for completed steps (nullable for in‑progress) | Event |
+| `runtime_mode` | Planner mode (`normal`, `diagnostics`, `vision`) | Planner |
+| `task_type` | Classified task type (`general`, `coding`, `research`, …) | Task |
+| `cost_estimate_usd` | Estimated cost for the step (0 if not applicable) | Cost |
+| `failure_class` | Failure taxonomy label (for failed/errored events) | Failure |
+
+### 5.2 Optional in v1 / Future
+
+| Field | Description | Planned for |
+|-------|-------------|-------------|
+| `tenant_id` | Multi‑tenant boundary | Agent Company v1 |
+| `workflow_id` | Parent workflow identifier | Orchestrator v2 |
+| `session_id` | User session correlation | UX v2 |
+| `department`, `department_role`, `agent` | Agent Company hierarchy | Agent Company v1 |
+| `token_usage_in`, `token_usage_out` | Token accounting | Billing v2 |
+| `cost_actual_usd` | Final billed cost | Billing v2 |
+| `artifact_refs`, `billable_event_refs` | Links to artifacts / billing | Agent Company v1 |
+| `error_code`, `error_summary` | Structured error details | Failure taxonomy v2 |
+
+> This is the minimum viable trace vocabulary. It may be extended later, but the system should converge around a stable trace contract early.
 
 ---
 
@@ -321,7 +325,7 @@ For department workflows, observability should include:
 - human approval checkpoints,
 - artifact production.
 
-This allows cost and quality analysis per department and per vertical.[web:2080][web:2086]
+This allows cost and quality analysis per department and per vertical.
 
 ---
 
@@ -345,7 +349,7 @@ This is required not only for infrastructure control, but also for monetization 
 - which department is expensive,
 - which workflow is profitable,
 - which tool path is too costly,
-- which client/workspace exceeds expected usage.[web:2086]
+- which client/workspace exceeds expected usage.
 
 Cost telemetry should be consistent with billing events in `PITH_AGENT_COMPANY_V1.md` and the billing model.
 
@@ -353,7 +357,7 @@ Cost telemetry should be consistent with billing events in `PITH_AGENT_COMPANY_V
 
 ## 8. Failure Taxonomy
 
-Pith should classify failures instead of collapsing everything into generic “error.”
+Pith should classify failures instead of collapsing everything into generic "error."
 
 Suggested failure classes:
 
@@ -370,7 +374,7 @@ Suggested failure classes:
 - `unknown_failure`
 
 Each failure should be attached to a trace event with `failure_class`, `error_code`, and `error_summary`.
-A stable failure taxonomy is necessary for postmortems, evaluation, and operational learning.[web:2079][web:2083]
+A stable failure taxonomy is necessary for postmortems, evaluation, and operational learning.
 
 ---
 
@@ -393,7 +397,7 @@ Pith should eventually expose at least these operator-facing views:
 5. **Memory View**  
    Inspect memory usage and retrieval behavior.
 
-These do not need to exist as polished UI in v1, but the data model should be designed for them.[web:2081][web:2085]
+These do not need to exist as polished UI in v1, but the data model should be designed for them.
 
 ---
 
@@ -408,7 +412,15 @@ Observability v1 should focus on:
 5. Failure taxonomy adoption in all critical components.
 6. Operator-readable logs and debugability for priority paths.
 
-Do not overbuild full analytics before the trace contract is stable.[web:2082][web:2084]
+Do not overbuild full analytics before the trace contract is stable.
+
+> **Concrete v1 store**: `TraceStore v1` stores at minimum:
+> - `task_traces` (aggregate per task, as currently implemented),
+> - optional `trace_events` (fine‑grained step log, deferred to v2).
+>
+> For v1, `task_traces` is the aggregate trace table for task‑level observability. Future versions may add `trace_events` as a fine‑grained event log; v1 does not require this yet.
+>
+> Core components must ensure that all **Required v1** fields (section 5.1) are populated for `task_started`, `task_finished`, and `task_failed` events.
 
 ---
 
@@ -440,4 +452,14 @@ This document should influence:
 - TaskService and execution result schemas
 - future operator console work
 
-Pith should not expand autonomy or monetized agent workflows without observability that is good enough to support trust, debugging, evaluation, and cost control.[web:2080][web:2083][web:2086]
+Pith should not expand autonomy or monetized agent workflows without observability that is good enough to support trust, debugging, evaluation, and cost control.
+
+---
+
+<div style="text-align: center; margin-top: 40px; color: #666;">
+
+**Pith Lab · Москва · 2026**
+
+*Версия v1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
+
+</div>
