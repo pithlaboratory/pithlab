@@ -9,6 +9,60 @@
 
 ---
 
+## 2026-05-14
+
+### EvaluationRecord v1 — end-to-end traceable evaluation contract
+- Aligned `core/evolution/evaluator.py` with `EvaluationRecord v1` contract:
+  - `evaluate_response()` now returns canonical fields: `task_success`, `human_override`, `quality_score`, `cost_per_workflow`, `policy_violation`, `failure_class`, `eval_source`, `eval_version`.
+  - `human_override` defaults to `"none"`; caller may enrich based on correction path.
+  - `task_success` is canonical source for task completion analytics (`success` / `partial_success` / `failure`).
+  - `trace_id` and `workspace_id` remain caller responsibility (runtime layer).
+- Updated `interfaces/telegram_bot.py` to enrich eval blob with runtime linkage:
+  - After `evaluator.evaluate_response(...)`, caller adds: `trace_id`, `workspace_id`, `task_id`, `cost_per_workflow`, `failure_class`, `runtime_mode`, `task_type`, `workflow_type`.
+  - Removed `execution_path` from `eval_kwargs` (not in evaluator signature) — fixes potential `TypeError`.
+  - Ensured `attach_execution_result()` is called **before** `update_status(..., completed)` — guarantees cost/metadata are persisted before trace finalization.
+- Synchronized user feedback with `human_override` in `handle_feedback()`:
+  - `👍 (positive)` → `human_override="none"`
+  - `👎 (negative)` → `human_override="minor_correction"` (v1 heuristic; can be refined later).
+- Verification:
+  - Smoke test confirms `metadata["eval"]` in `episodes.db` contains all `EvaluationRecord v1` required fields.
+  - Traceability rule enforced: every eval record resolvable to `task_traces` via `trace_id` + `task_id`.
+- Risk: Low — all changes are backward-compatible; additive schema migrations only.
+- Commit: `feat: evaluation v1.1 — traceable EvaluationRecord contract + feedback sync` (core/evolution/evaluator.py, interfaces/telegram_bot.py)
+
+### [docs] Runtime context review and hardening plan
+- Added `docs/PITH_RUNTIME_CONTEXT_REVIEW_2026-05-14.md` as the first structured runtime context review and hardening baseline.
+- Documented initial Patch / Execution Plan for:
+  - TraceStore schema (task_traces runtime_mode, task_type, failure_class, error_code, cost_estimate_usd, runtime_config_ver),
+  - FailureClass enum introduction,
+  - ExecutionResult schema,
+  - RuntimeConfig versioning,
+  - ContextAssembler audit.
+- Scope: runtime hardening for v5.2, no expansion into Agent Company workflows or operator console in this phase.
+- Risk: None — documentation only.
+
+### TraceStore v1.1 — failure taxonomy and enriched task traces
+- Implemented minimal failure taxonomy:
+  - Added `core/observability/failure_taxonomy.py` with `FailureClass` enum (routing_failure, planner_failure, orchestrator_failure, tool_failure, memory_failure, policy_failure, approval_timeout, artifact_failure, quality_failure, cost_guardrail_violation, unknown_failure).
+- Extended `task_traces` schema via additive migration:
+  - Added columns `runtime_mode`, `task_type`, `failure_class`, `error_code`, `cost_estimate_usd`, `runtime_config_ver` to `data/episodes.db.task_traces` using `PRAGMA table_info` + `ALTER TABLE ... ADD COLUMN` (backward-compatible).
+- Updated `core/observability/trace_store.py`:
+  - `task_started(...)` now records workspace/runtime metadata (workspace_id, runtime_mode, task_type, runtime_config_ver) with COALESCE-safe updates.
+  - `task_finished(...)` now records `duration_ms` and `cost_estimate_usd`.
+  - `task_failed(...)` now records `error_type`, `failure_class`, `error_code`, `duration_ms`.
+- Updated `core/services/task_service.py`:
+  - Extended `update_status(...)` to accept `failure_class` and `error_code` (backward-compatible signature).
+  - On completed tasks: passes `task.cost_usd` into TraceStore, populating `cost_estimate_usd`.
+  - On failed/cancelled tasks: passes `error_type` (terminal status), resolved `FailureClass` (default `unknown_failure`), and optional `error_code` into TraceStore.
+- Verification:
+  - Smoke tests confirm:
+    - successful tasks write `status='ok'`, `duration_ms`, `cost_estimate_usd`,
+    - failed tasks write `status='error'`, `error_type`, `failure_class`, `error_code`, `task_type`.
+- Risk: Low — additive schema migrations only; no data loss possible.
+- Commit: `runtime: add failure taxonomy and enrich task traces` (core/observability/failure_taxonomy.py, core/observability/trace_store.py, core/services/task_service.py)
+
+---
+
 ## 2026-05-12
 
 ### TraceStore v1 — minimal task-level backbone
@@ -45,6 +99,7 @@
   - evaluator score linkage,
   - trace query/read API,
   - dashboards / analytics.
+- Risk: Low — isolated module, no breaking changes.
 
 ---
 
@@ -89,6 +144,7 @@
 - vNext is positioned as natural next layer, not as separate fork or rewrite.
 - Core identity remains unchanged:
   - *workspace-native orchestration runtime for continuity-driven long-running work*.
+- Risk: None — documentation only.
 
 ---
 
@@ -124,6 +180,7 @@
 - Added architecture decision index: `docs/ADR_INDEX.md`.
 - Updated `PITH_DEV_CONTEXT.md` canonical references to point to the new kernel/ADR docs.
 - Fixed documentation hierarchy so Manifesto / Product Doctrine / Architecture North Star / Kernel / Roadmap are aligned around continuity runtime framing.
+- Risk: None — documentation only.
 
 ---
 
@@ -156,6 +213,7 @@
   - Evaluator,
   - Governance,
   - Evolution loop.
+- Risk: None — conceptual alignment only.
 
 ---
 
@@ -175,6 +233,7 @@
 1. Router + `config.yaml` + secrets alignment.
 2. Stable startup and behaviour of Viktor / Telegram pipeline.
 3. Clarifying `RuntimePlanner` and its interaction with Router and `MemoryManager`.
+- Risk: Low — workflow change only, no code impact.
 
 ---
 
@@ -192,38 +251,3 @@ When updating this file:
   - affected component,
   - risk level,
   - rollback path if relevant.
-  ---
-
----
-
-## 2026-05-14
-
-### Runtime context review and hardening plan
-- Added `docs/PITH_RUNTIME_CONTEXT_REVIEW_2026-05-14.md` as the first structured runtime context review and hardening baseline.
-- Documented initial Patch / Execution Plan for:
-  - TraceStore schema (task_traces runtime_mode, task_type, failure_class, error_code, cost_estimate_usd, runtime_config_ver),
-  - FailureClass enum introduction,
-  - ExecutionResult schema,
-  - RuntimeConfig versioning,
-  - ContextAssembler audit.
-- Scope: runtime hardening for v5.2, no expansion into Agent Company workflows or operator console in this phase.[cite:90][cite:11]
-
-### TraceStore v1.1 — failure taxonomy and enriched task traces
-- Implemented minimal failure taxonomy:
-  - Added `core/observability/failure_taxonomy.py` with `FailureClass` enum (routing_failure, planner_failure, orchestrator_failure, tool_failure, memory_failure, policy_failure, approval_timeout, artifact_failure, quality_failure, cost_guardrail_violation, unknown_failure).
-- Extended `task_traces` schema via additive migration:
-  - Added columns `runtime_mode`, `task_type`, `failure_class`, `error_code`, `cost_estimate_usd`, `runtime_config_ver` to `data/episodes.db.task_traces` using `PRAGMA table_info` + `ALTER TABLE ... ADD COLUMN` (backward-compatible).[cite:90]
-- Updated `core/observability/trace_store.py`:
-  - `task_started(...)` now records workspace/runtime metadata (workspace_id, runtime_mode, task_type, runtime_config_ver) with COALESCE-safe updates.
-  - `task_finished(...)` now records `duration_ms` and `cost_estimate_usd`.
-  - `task_failed(...)` now records `error_type`, `failure_class`, `error_code`, `duration_ms`.[cite:90]
-- Updated `core/services/task_service.py`:
-  - Extended `update_status(...)` to accept `failure_class` and `error_code` (backward-compatible signature).
-  - On completed tasks: passes `task.cost_usd` into TraceStore, populating `cost_estimate_usd`.
-  - On failed/cancelled tasks: passes `error_type` (terminal status), resolved `FailureClass` (default `unknown_failure`), and optional `error_code` into TraceStore.[cite:90]
-- Verification:
-  - Smoke tests confirm:
-    - successful tasks write `status='ok'`, `duration_ms`, `cost_estimate_usd`,
-    - failed tasks write `status='error'`, `error_type`, `failure_class`, `error_code`, `task_type`.[cite:90]
-- Commit:
-  - `runtime: add failure taxonomy and enrich task traces` (core/observability/failure_taxonomy.py, core/observability/trace_store.py, core/services/task_service.py).

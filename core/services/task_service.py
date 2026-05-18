@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from core.observability.trace_store import TraceStore
-from core.observability.failure_taxonomy import FailureClass  # ✅ Added
+from core.observability.failure_taxonomy import FailureClass
 from core.schemas import TaskRecord, TaskState
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class TaskService:
     - task_started() -> при регистрации задачи в runtime (не при старте исполнения!)
     - task_finished() / task_failed() -> при смене статуса
     - Все trace-вызовы обёрнуты в try/except для graceful degradation
-    - trace_id correlation: хранится в metadata_json (без миграции БД, без присваивания атрибутов)
+    - trace_id correlation: хранится в metadata_json и пробрасывается в task_traces
     - cost_estimate_usd пробрасывается в trace при завершении задачи
     """
 
@@ -133,13 +133,14 @@ class TaskService:
             )
 
         try:
-            # ✅ Updated: passing runtime metadata to trace
+            # ✅ Updated: trace_id теперь пробрасывается в TraceStore при старте
             self._trace_store.task_started(
                 task_id=task.task_id,
                 workspace_id=task.workspace_id,
                 runtime_mode=task.metadata.get("runtime_mode"),
                 task_type=task.metadata.get("intent_type"),
                 runtime_config_ver=task.metadata.get("runtime_config_ver"),
+                trace_id=task.metadata.get("trace_id"),
             )
         except Exception:
             logger.exception(
@@ -229,8 +230,8 @@ class TaskService:
         task_id: str,
         new_status: TaskState,
         error_message: Optional[str] = None,
-        failure_class: Optional[FailureClass] = None,  # ✅ Added
-        error_code: Optional[str] = None,             # ✅ Added
+        failure_class: Optional[FailureClass] = None,
+        error_code: Optional[str] = None,
     ) -> Optional[TaskRecord]:
         task = self._tasks.get(task_id)
         if not task:
@@ -287,7 +288,6 @@ class TaskService:
                     duration_ms = int(
                         (task.finished_at - task.started_at).total_seconds() * 1000
                     )
-                # ✅ FIXED: cost_estimate_usd now passed to trace
                 self._trace_store.task_finished(
                     task.task_id,
                     duration_ms=duration_ms,
@@ -301,7 +301,6 @@ class TaskService:
                         (task.finished_at - task.started_at).total_seconds() * 1000
                     )
 
-                # ✅ Resolved failure_class with safe fallback
                 resolved_failure_class = (
                     failure_class.value if failure_class else FailureClass.UNKNOWN_FAILURE.value
                 )

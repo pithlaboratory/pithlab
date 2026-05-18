@@ -38,6 +38,7 @@ class TraceStore:
                 "task_type": "TEXT",
                 "cost_estimate_usd": "REAL",
                 "runtime_config_ver": "TEXT",
+                "trace_id": "TEXT",  # ✅ Added
             }
 
             for col_name, col_type in required_columns.items():
@@ -53,16 +54,17 @@ class TraceStore:
         runtime_mode: Optional[str] = None,
         task_type: Optional[str] = None,
         runtime_config_ver: Optional[str] = None,
+        trace_id: Optional[str] = None,  # ✅ Added
     ) -> None:
         with sqlite3.connect(self.db_path) as conn:
             # Создаём запись, если её нет
             conn.execute(
                 """
                 INSERT OR IGNORE INTO task_traces (
-                    task_id, workspace_id, status, runtime_mode, task_type, runtime_config_ver
-                ) VALUES (?, ?, 'running', ?, ?, ?)
+                    task_id, workspace_id, status, runtime_mode, task_type, runtime_config_ver, trace_id
+                ) VALUES (?, ?, 'running', ?, ?, ?, ?)
                 """,
-                (task_id, workspace_id, runtime_mode, task_type, runtime_config_ver),
+                (task_id, workspace_id, runtime_mode, task_type, runtime_config_ver, trace_id),
             )
             # Мягкая дозапись metadata без overwrite уже заполненных значений
             conn.execute(
@@ -71,10 +73,11 @@ class TraceStore:
                 SET workspace_id = COALESCE(workspace_id, ?),
                     runtime_mode = COALESCE(runtime_mode, ?),
                     task_type = COALESCE(task_type, ?),
-                    runtime_config_ver = COALESCE(runtime_config_ver, ?)
+                    runtime_config_ver = COALESCE(runtime_config_ver, ?),
+                    trace_id = COALESCE(trace_id, ?)
                 WHERE task_id = ?
                 """,
-                (workspace_id, runtime_mode, task_type, runtime_config_ver, task_id),
+                (workspace_id, runtime_mode, task_type, runtime_config_ver, trace_id, task_id),
             )
 
     def task_finished(

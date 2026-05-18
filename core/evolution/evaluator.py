@@ -15,6 +15,12 @@ class Evaluator:
     
     Архитектурное правило: evaluator работает с "чистыми" ответами ядра,
     без префиксов интерфейса (🎭 Viktor Vaughn:, Pith:, etc.).
+    
+    EvaluationRecord v1 compliance:
+    - Возвращает canonical evaluation structure с полями:
+      task_success, human_override, quality_score, cost_per_workflow, etc.
+    - trace_id и workspace_id добавляются caller'ом (runtime layer).
+    - task_success — canonical source for task completion analytics (PITH_EVALUATION_V1).
     """
 
     # Фразы-маркеры "уклонения" ИИ (снижают оценку)
@@ -147,9 +153,10 @@ class Evaluator:
         """
         Оценивает ответ по множеству метрик.
         
-        Args:
-            response: чистый текст ответа (без префиксов интерфейса!)
-            task_type: тип задачи для контекстной оценки длины
+        Returns:
+            EvaluationRecord v1-compatible dictionary.
+            Note: trace_id and workspace_id must be added by caller.
+            Note: task_success is canonical source for task completion analytics.
         """
         start = self.pending.pop(task_id, time.time())
         latency = (time.time() - start) * 1000
@@ -174,23 +181,58 @@ class Evaluator:
             length_score * weights["length"]
         )
 
+        # ✅ Canonical quality score
+        quality_score_final = round(final_score, 3)
+
+        # ✅ v1 task success heuristic
+        if quality_score_final >= 0.75:
+            task_success = "success"
+        elif quality_score_final >= 0.5:
+            task_success = "partial_success"
+        else:
+            task_success = "failure"
+
+        # ✅ human_override: default to "none"; caller may enrich based on correction path
+        # Note: user_feedback != human_override; negative feedback may be rejection without correction
+        human_override = "none"
+
+        # ✅ EvaluationRecord v1 structure
         evaluation = {
+            # Identity (caller must add trace_id, workspace_id)
             "task_id": task_id,
             "user_id": user_id,
-            "ts": datetime.utcnow().isoformat(),
+            "created_at": datetime.utcnow().isoformat(),
+            "task_type": task_type,
+            "workflow_type": task_type,
+
+            # Core dimensions (EvaluationRecord v1)
+            "task_success": task_success,  # canonical source for task completion analytics
+            "human_override": human_override,
+            "quality_score": quality_score_final,
+            "cost_per_workflow": cost,
+            "policy_violation": False,
+            "failure_class": None,
+
+            # Metadata
+            "eval_source": "model",
+            "eval_version": "evaluation_v1",
+            "rubric_version": "evaluation_v1",
+            "user_feedback": user_feedback,
+
+            # Runtime telemetry snapshot
             "model": model,
             "tokens": tokens,
-            "cost": cost,
             "latency_ms": latency,
+            "cost": cost,
+
+            # Detailed subscores remain useful for debugging
             "scores": {
                 "disclaimer": disclaimer_score,
                 "quality": quality_score,
                 "context": context_score,
                 "length": length_score,
-                "final": round(final_score, 3),
+                "final": quality_score_final,
             },
-            "user_feedback": user_feedback,
-            "task_type": task_type,
         }
 
         # ✅ Логирование в стиле % (без f-string)
@@ -212,32 +254,39 @@ class Evaluator:
     def to_episode_metadata(self, evaluation: Dict[str, Any]) -> Dict[str, Any]:
         """
         Преобразует результат оценки в нормализованный patch для metadata эпизода.
-
-        Args:
-            evaluation: результат evaluate_response()
-
-        Returns:
-            словарь с полями для добавления в metadata_json
+        
+        Returns fields compatible with EvaluationRecord v1 for storage in memory.
         """
-        scores = evaluation.get("scores", {})
-        final_score = scores.get("final", 0.0)
-
-        # Определяем outcome на основе финальной оценки
-        if final_score >= 0.75:
-            outcome = "success"
-        elif 0.5 <= final_score < 0.75:
-            outcome = "partial"
-        else:
-            outcome = "failure"
-
         return {
+            # Core dimensions
+            "task_success": evaluation.get("task_success"),
+            "human_override": evaluation.get("human_override"),
+            "quality_score": evaluation.get("quality_score"),
+            "cost_per_workflow": evaluation.get("cost_per_workflow"),
+            "policy_violation": evaluation.get("policy_violation"),
+            "failure_class": evaluation.get("failure_class"),
+            
+            # Metadata
+            "eval_source": evaluation.get("eval_source"),
+            "eval_version": evaluation.get("eval_version"),
+            "rubric_version": evaluation.get("rubric_version"),
+            
+            # Context
+            "task_type": evaluation.get("task_type"),
+            "workflow_type": evaluation.get("workflow_type"),
+            
+            # Runtime telemetry
             "model": evaluation.get("model"),
             "tokens": evaluation.get("tokens"),
             "cost": evaluation.get("cost"),
             "latency_ms": evaluation.get("latency_ms"),
-            "task_type": evaluation.get("task_type"),
-            "scores": scores,
-            "outcome": outcome,
+            
+            # Detailed scores
+            "scores": evaluation.get("scores", {}),
+            
+            # Feedback
+            "user_feedback": evaluation.get("user_feedback"),
+            "created_at": evaluation.get("created_at"),
         }
 
 

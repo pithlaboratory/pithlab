@@ -20,9 +20,9 @@ It must cover:
 - regression over time,
 - department-level business outcomes.
 
-This document exists because a system that “runs” is not necessarily a system that works well.[web:2095]
+This document exists because a system that “runs” is not necessarily a system that works well.
 
-Evaluation is a **first‑class runtime concern** and is built on top of observability traces and events, not as a separate analytics afterthought.[web:2079][web:2087]
+Evaluation is a **first‑class runtime concern** and is built on top of observability traces and events, not as a separate analytics afterthought.
 
 ---
 
@@ -37,7 +37,7 @@ Pith is designed for:
 - department-oriented execution,
 - monetizable outcomes.
 
-In such a system, failure may appear even when nothing crashes.[web:2092]
+In such a system, failure may appear even when nothing crashes.
 
 Examples:
 
@@ -48,7 +48,7 @@ Examples:
 - the agent completes the task but at unacceptable cost,
 - the department appears productive but requires too much human correction.
 
-Therefore, evaluation must be treated as part of architecture, not as an optional analytics layer.[web:2094][web:2102]
+Therefore, evaluation must be treated as part of architecture, not as an optional analytics layer.
 
 ---
 
@@ -56,7 +56,7 @@ Therefore, evaluation must be treated as part of architecture, not as an optiona
 
 ### 3.1 Workflow-first
 
-Pith must evaluate complete workflows, not only single responses or isolated tool calls.[web:2096]
+Pith must evaluate complete workflows, not only single responses or isolated tool calls.
 
 ### 3.2 Multi-layer scoring
 
@@ -84,7 +84,7 @@ Critical workflows must include human feedback and correction signals.
 
 ### 3.5 Runtime-grounded
 
-Evaluation should use real runtime traces and events from Observability v1, not abstract benchmark-only assumptions.[web:2079][web:2082]
+Evaluation should use real runtime traces and events from Observability v1, not abstract benchmark-only assumptions.
 
 ### 3.6 Improvement-oriented
 
@@ -102,7 +102,7 @@ Evaluation exists not only to score, but to drive:
 Across all workflows, the **two primary health indicators** are:
 
 - `task_completion_rate` (success vs partial vs failure),
-- `human_override_rate` (how often humans must correct or redo work).[web:2092][web:2097]
+- `human_override_rate` (how often humans must correct or redo work).
 
 All other metrics should be interpretable in the context of these two.
 
@@ -189,13 +189,13 @@ Suggested values:
 - `failure`
 - `rejected_after_review`
 
-Task success labels should be attached to workflows/tasks in the trace store for later analysis and regression.[web:2096][web:2102]
+Task success labels should be attached to workflows/tasks in the trace store for later analysis and regression.
 
 ### 5.2 Human Override Rate
 
 How often does a human need to intervene, correct, or replace the result?
 
-This is one of the strongest indicators that the system is not yet trustworthy or cost-effective.[web:2092][web:2097]
+This is one of the strongest indicators that the system is not yet trustworthy or cost-effective.
 
 ### 5.3 Quality Score
 
@@ -222,7 +222,7 @@ Evaluation should compare:
 - time spent,
 - final business outcome.
 
-Cost efficiency metrics should be computed using the same cost telemetry as Observability v1.[web:2086][web:2100]
+Cost efficiency metrics should be computed using the same cost telemetry as Observability v1.
 
 ### 5.5 Reliability
 
@@ -241,6 +241,30 @@ Evaluation should capture whether the workflow stayed within declared boundaries
 - autonomy overreach,
 - missing approvals,
 - risky tool usage.
+
+### 5.7 EvaluationRecord v1 Contract
+
+For v1, every evaluated task/workflow must produce a structured `EvaluationRecord`. It may be stored as a dedicated table or as a structured JSON blob attached to tasks/workflows (e.g., in `task_traces` or `memory episodes`).
+
+**Identity:**
+- `trace_id` (must resolve to a single trace in TraceStore)
+- `task_id`
+- `workspace_id`
+- `workflow_type` / `task_type`
+
+**Core Dimensions:**
+- `task_success` (`success` / `partial_success` / `failure` / `rejected_after_review`)
+- `human_override` (`none` / `minor_correction` / `major_rework`)
+- `quality_score` (0.0–1.0 or 1–5, linked to `rubric_version`)
+- `cost_per_workflow` (pulled from Observability)
+- `policy_violation` (bool) + `failure_class` (if applicable)
+
+**Metadata:**
+- `eval_source` (`human` / `model` / `mixed`)
+- `eval_version` (rubric/prompt/model ID)
+- `created_at`
+
+> **Traceability Rule:** Any `EvaluationRecord` must be resolvable to a single trace in `TraceStore` via `trace_id` and `task_id`. Evaluation must not introduce independent primary keys without linking them back to the runtime trace.
 
 ---
 
@@ -267,7 +291,7 @@ Use this layer when validating:
 - memory policy changes,
 - critical tool integrations.
 
-Offline evaluation can run against recorded traces (replay) or synthetic tasks, but should reuse the same evaluation dimensions and metrics.[web:2096][web:2102]
+Offline evaluation can run against recorded traces (replay) or synthetic tasks, but should reuse the same evaluation dimensions and metrics.
 
 ### 6.2 Online Production Signals
 
@@ -285,8 +309,7 @@ Includes signals derived from runtime traces:
 - incident rate,
 - operator review outcomes.
 
-This is the main health layer for production.
-All signals must be attributable by `tenant`, `workspace`, `department`, and `workflow_type`.[web:2097]
+> **Observability Linkage:** All evaluation metrics in v1 must be derivable from `TraceStore` fields. Any `EvaluationRecord` must reference at minimum: `trace_id`, `task_id`, `workspace_id`, `runtime_mode`, `task_type`, `failure_class`, and `cost_estimate_usd`.
 
 ### 6.3 Post-Workflow Review
 
@@ -300,7 +323,7 @@ Includes:
 - incident-linked evaluation,
 - regression creation from real failures.
 
-Real failures should become future evaluation cases and regression tests.[web:2095][web:2101]
+Real failures should become future evaluation cases and regression tests.
 
 ---
 
@@ -357,17 +380,23 @@ Examples:
 - competitor matrix generated,
 - support case resolved.
 
-Department-level evaluation should align with billable outcomes from `PITH_AGENT_COMPANY_V1.md`.[web:2097]
+Department-level evaluation should align with billable outcomes from `PITH_AGENT_COMPANY_V1.md`.
 
 ---
 
 ## 8. Department-Level Evaluation
 
-Because Pith is becoming an Agent Company OS, evaluation must also work at department level.[web:2094][web:2097]
+Because Pith is becoming an Agent Company OS, evaluation must also work at department level. All department evaluations share a common core schema, with vertical-specific signals layered on top.
+
+### 8.0 Department-Agnostic Core Schema
+- `department_type` (e.g., `sales`, `marketing`, `research`)
+- `business_outcome_type` (e.g., `qualified_lead`, `campaign_pack`, `research_brief`)
+- `business_outcome_success` (`yes` / `no` / `partial`)
+- `business_outcome_value` (optional numeric metric)
+- `human_approval` / `customer_success` flags
 
 ### 8.1 Sales Department
-
-Possible signals:
+Possible signals (extending the core schema):
 
 - qualified lead quality,
 - meeting-booking rate,
@@ -376,8 +405,7 @@ Possible signals:
 - cost per qualified lead.
 
 ### 8.2 Marketing Department
-
-Possible signals:
+Possible signals (extending the core schema):
 
 - campaign readiness,
 - copy quality,
@@ -387,8 +415,7 @@ Possible signals:
 - cost per campaign.
 
 ### 8.3 Research Department
-
-Possible signals:
+Possible signals (extending the core schema):
 
 - factual reliability,
 - coverage,
@@ -396,8 +423,7 @@ Possible signals:
 - decision usefulness.
 
 ### 8.4 Delivery Department
-
-Possible signals:
+Possible signals (extending the core schema):
 
 - artifact completeness,
 - specification clarity,
@@ -405,8 +431,7 @@ Possible signals:
 - defect/clarification rate.
 
 ### 8.5 Support / Ops Department
-
-Possible signals:
+Possible signals (extending the core schema):
 
 - resolution correctness,
 - escalation quality,
@@ -433,7 +458,7 @@ Memory evaluation should include:
 Important principle:
 a memory hit is not automatically a good memory hit.
 
-Evaluation should explicitly tag workflows where memory helped vs harmed, based on human or model judgment.[web:2096][web:2102]
+Evaluation should explicitly tag workflows where memory helped vs harmed, based on human or model judgment.
 
 ---
 
@@ -485,13 +510,13 @@ Examples:
 - support case resolved,
 - workflow monetized successfully.
 
-These signals close the loop between runtime behavior and real business outcomes.[web:2097][web:2100]
+These signals close the loop between runtime behavior and real business outcomes.
 
 ---
 
 ## 11. Regression Philosophy
 
-Every meaningful production failure should be considered a candidate regression test.[web:2095][web:2101]
+Every meaningful production failure should be considered a candidate regression test.
 
 This means:
 
@@ -503,7 +528,7 @@ This means:
 
 Pith should become harder to break over time because failures feed the evaluation loop.
 
-A small set of **golden workflows** should be kept as canaries and run regularly to detect regressions in planner/orchestrator/prompt/model behavior.[web:2096][web:2098]
+A small set of **golden workflows** should be kept as canaries and run regularly to detect regressions in planner/orchestrator/prompt/model behavior.
 
 ---
 
@@ -520,7 +545,7 @@ It should use evaluation evidence such as:
 - better cost efficiency,
 - lower policy violation risk.
 
-Evolution proposals (changes to prompts, tools, routing, memory, policies) should reference evaluation data, not only narrative arguments.[web:2092][web:2102]
+Evolution proposals (changes to prompts, tools, routing, memory, policies) should reference evaluation data, not only narrative arguments.
 
 No claimed evolution is valid unless it improves measurable behavior.
 
@@ -545,7 +570,7 @@ Pith Evaluation v1 should at minimum track:
 - memory usefulness score (sampled),
 - department outcome rate (e.g. qualified leads, campaigns, briefs).
 
-These metrics can start simple, but they must exist and be derived from trace data.[web:2097][web:2100]
+These metrics can start simple, but they must exist and be derived from trace data.
 
 ---
 
@@ -560,7 +585,9 @@ Start with:
 5. Cost-quality correlation (cost per successful workflow).
 6. Regression case collection from real failures.
 
-Do not overbuild a perfect evaluation platform before the runtime emits stable traces and outcomes (see `PITH_OBSERVABILITY_V1.md`).[web:2079][web:2082]
+Do not overbuild a perfect evaluation platform before the runtime emits stable traces and outcomes (see `PITH_OBSERVABILITY_V1.md`).
+
+> **Current v1 Implementation Pattern:** For single-task flows, evaluation results are stored as `eval` metadata on the assistant episode via `memory.save_episode(..., metadata={"eval": ...})`. This blob must conform to the `EvaluationRecord v1` structure and explicitly include `task_id` and `trace_id` to maintain end-to-end traceability.
 
 ---
 
@@ -591,4 +618,14 @@ This document should influence:
 - operator review flows
 - future regression tooling
 
-Pith should not scale autonomy, monetization, or department complexity without an evaluation layer strong enough to detect quality drift and operational regression.[web:2092][web:2097][web:2102]
+Pith should not scale autonomy, monetization, or department complexity without an evaluation layer strong enough to detect quality drift and operational regression.
+
+---
+
+<div style="text-align: center; margin-top: 40px; color: #666;">
+
+**Pith Lab · Москва · 2026**
+
+*Версия v1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
+
+</div>

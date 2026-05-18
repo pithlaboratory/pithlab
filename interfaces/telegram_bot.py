@@ -491,6 +491,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session_id = f"tg_{update.effective_chat.id}"
     trace_id = str(uuid.uuid4())
 
+    # 🔍 TRACE_DEBUG: log generated trace_id
+    logger.info(
+        "TRACE_DEBUG: generated trace_id=%s for user=%s chat=%s",
+        trace_id,
+        user_id,
+        update.effective_chat.id if update.effective_chat else None,
+    )
+
     if router_available:
         try:
             router = get_router()
@@ -502,11 +510,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.debug("Budget check skipped: %s", e)
 
+    # 🔍 TRACE_DEBUG: log before calling create_task
+    logger.info(
+        "TRACE_DEBUG: calling create_task with trace_id=%s (task_service=%r)",
+        trace_id,
+        task_service,
+    )
+
+    # ✅ FIX: Pass trace_id to TaskService for correlation
     task = task_service.create_task(
         workspace_id=workspace_id,
         user_id=user_id,
         source_interface="telegram",
         input_text=text,
+        trace_id=trace_id,
     )
     task_id = task.task_id
 
@@ -519,7 +536,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text[:100],
     )
 
-    # ✅ FIX: trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
+    # ✅ trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
     memory.save_episode(
         user_id=user_id,
         role="user",
@@ -549,12 +566,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ui_mode_hint = detect_runtime_mode_ui(text)
 
+        # ✅ FIX: Pass trace_id to Planner for correlation
         result = await planner.plan_and_answer(
             user_id=user_id,
             text=text,
             workspace_id=workspace_id,
             task_id=task_id,
             session_id=session_id,
+            trace_id=trace_id,
         )
 
         if not isinstance(result, dict):
@@ -673,6 +692,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     try:
+        # ✅ FIXED: removed execution_path (not in evaluator signature)
         eval_kwargs = {
             "task_id": task_id,
             "user_id": user_id,
@@ -682,7 +702,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cost": result.get("cost", 0.0),
             "user_feedback": None,
             "context_used": result.get("context_used"),
-            "execution_path": result.get("execution_path", "direct"),
         }
 
         sig = inspect.signature(evaluator.evaluate_response)
@@ -691,7 +710,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         eval_result = evaluator.evaluate_response(**eval_kwargs)
 
-        # ✅ FIX: trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
+        # ✅ Enrich eval blob to full EvaluationRecord v1 traceability contract
+        eval_result["trace_id"] = trace_id
+        eval_result["workspace_id"] = workspace_id
+        eval_result["task_id"] = task_id
+        eval_result["cost_per_workflow"] = result.get("cost", 0.0)
+        eval_result["failure_class"] = eval_result.get("failure_class")
+        eval_result["runtime_mode"] = runtime_mode_str
+        eval_result["task_type"] = task_type
+        eval_result["workflow_type"] = eval_result.get("workflow_type") or task_type
+
+        # ✅ trace_id only in metadata, not as separate kwarg (MemoryManager compatibility)
         memory.save_episode(
             user_id=user_id,
             role="assistant",
@@ -719,6 +748,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning("Non-critical error in eval/memory: %s", e, exc_info=True)
 
+    # ✅ CORRECT ORDER: attach_execution_result BEFORE update_status(completed)
     task_service.attach_execution_result(
         task_id=task_id,
         model_id=result.get("model_id"),
@@ -728,6 +758,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tokens_prompt=result.get("tokens_prompt", 0),
         tokens_completion=result.get("tokens_completion", 0),
         latency_ms=latency_ms,
+        trace_id=trace_id,  # ✅ Added for full consistency
     )
     task_service.update_status(task_id, TaskState.completed)
 
@@ -766,7 +797,16 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if episode:
                 metadata = episode.get("metadata", {}) or {}
                 eval_data = metadata.get("eval", {}) or {}
+
+                # ✅ Обновляем user_feedback
                 eval_data["user_feedback"] = feedback_value
+
+                # ✅ Синхронизируем human_override для EvaluationRecord v1
+                if feedback_value == "negative":
+                    eval_data["human_override"] = "minor_correction"
+                else:
+                    eval_data["human_override"] = "none"
+
                 metadata["eval"] = eval_data
                 memory.update_episode_metadata(episode["id"], metadata)
     except Exception as e:
