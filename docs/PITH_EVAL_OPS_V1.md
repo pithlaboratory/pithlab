@@ -508,7 +508,7 @@ A valid first implementation may consist of:
 5. simple pass/fail release gates,
 6. a documented incident-to-regression loop.
 
-This is enough to make evaluation operational before the system becomes more automated.
+This is enough to make evaluation operational before the system becomes more automated.[web:428]
 
 ---
 
@@ -541,7 +541,55 @@ This document should align with:
 - incident review procedures
 - future regression tooling
 
-Eval Ops is the layer that turns evaluation from a design principle into a management system for runtime quality.
+Eval Ops is the layer that turns evaluation from a design principle into a management system for runtime quality.[web:428]
+
+---
+
+## 16. Current v1 Smoke Implementation
+
+For Pith v5.2, the initial smoke implementation uses a small set of golden workflows and a generic runner script.
+
+**Golden workflow definitions:**
+
+- Golden workflow files live in `eval/golden/*.yaml` and conform to `eval/golden/golden_workflow_schema.json` (`GoldenWorkflow v1`).[web:383]
+- Each golden case includes: `golden_id`, `department`, `workflow_type`, `autonomy_tier`, `entrypoint`, `inputs`, `expected_properties`, `rubric`, `expected_eval_outcome`, and `owner`.[web:383]
+
+**Current v1 smoke suite includes at least:**
+
+- `research_competitor_brief_v1.yaml` — Research department, competitor research brief workflow.
+- `delivery_specification_draft_v1.yaml` — Delivery department, functional specification draft workflow.
+
+**Execution entrypoint:**
+
+- Smoke runs can be triggered locally via:
+
+  ```bash
+  make eval-smoke
+  ```
+
+- This target calls:
+
+  ```bash
+  python scripts/run_golden.py eval/golden/research_competitor_brief_v1.yaml
+  python scripts/run_golden.py eval/golden/delivery_specification_draft_v1.yaml
+  ```
+
+**Runner behavior (`scripts/run_golden.py`):**
+
+- Loads and validates the golden YAML against `golden_workflow_schema.json`.
+- Builds a runtime payload from `entrypoint` and `inputs` (currently using placeholder IDs and a stub runtime binding).
+- Produces a stub `EvaluationRecord v1` aligned with `PITH_EVALUATION_V1.md` (task_success, human_override, quality_score, policy_violation, etc.).
+- Writes a JSON artifact per golden case to `output/eval_runs/<golden_id>.json` containing:
+
+  - golden metadata (`golden_id`, `department`, `workflow_type`, `autonomy_tier`),
+  - the constructed runtime `payload`,
+  - the `evaluation_record` stub.
+
+These artifacts form the basis for future:
+
+- automated summary checks (pass/fail per golden),
+- integration with real runtime evaluation (replacing the stub with actual `EvaluationRecord v1`),
+- CI/CD gates that run `make eval-smoke` before releases.[web:431][web:428]
 
 ---
 
@@ -549,6 +597,6 @@ Eval Ops is the layer that turns evaluation from a design principle into a manag
 
 **Pith Lab · Москва · 2026**
 
-*Версия v1.0 · Май 2026 · CONFIDENTIAL / INTERNAL*
+*Версия v1.0.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
 
 </div>
