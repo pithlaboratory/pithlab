@@ -1,369 +1,422 @@
-# Pith Runtime Context Protocol v1
+# PITH_RUNTIME_CONTEXT_PROTOCOL_V1
 
-> **Purpose:** Defines how Pith assembles context for runtime execution: sources, ordering, priority, pruning rules, and mode-dependent behavior.  
-> **Alignment:** Implements `PITH_KERNEL.md`, `ARCHITECTURE_NORTH_STAR (v2).md`, `PITH_AGENT_COMPANY_V1.md`, `PITH_OBSERVABILITY_V1.md` at the runtime behavior level.  
-> **Status:** `ACTIVE`  
-> **Last updated:** 2026-05-14  
-> **Owner:** Core Runtime Engineering
+> Runtime‑native context envelope for Pith v5: identity, state, governance, artifacts, billing, and trace.
 
 ---
 
-## 1. Purpose & Link to Architecture
+## 1. Purpose
 
-Этот протокол описывает, как Pith собирает контекст для runtime‑задач и LLM‑вызовов: из каких источников, в каком порядке, в зависимости от режима работы и budget / governance constraints.
+Этот протокол определяет **единый формат runtime‑контекста** (context envelope) для задач и workflows в Pith.[cite:358]
 
-**Цели:**
+Он отвечает на вопросы:
 
-- Сделать поведение Pith стабильным, предсказуемым и контролируемым.
-- Уменьшить persona drift и лишнюю саморефлексию в рабочих сценариях.
-- Эффективно использовать контекстное окно: short‑term history, summaries, memory, artifacts, repo/docs/web context.
-- Гарантировать, что каждый вызов соответствует North Star и Kernel: continuity, governability, task‑focus, workspace/tenant isolation.
-- Привязать контекст к каноническим runtime‑сущностям, а не к “истории чата как таковой”.
+- кто действует (identity & subjects),
+- что именно сейчас делается (task / workflow),
+- в каком окружении (tenant / workspace / repo / memory),
+- под какими ограничениями (policies, autonomy, budget),
+- какие артефакты участвуют (inputs / outputs),
+- как всё это трассируется и биллится (trace, billing scope).[cite:361][cite:365]
 
----
-
-## 2. Canonical Runtime Scope
-
-Контекст в Pith всегда собирается **не вокруг чата**, а вокруг runtime‑единиц работы.
-
-Канонические runtime‑объекты, к которым может быть привязан контекст:
-
-- `Tenant`
-- `Workspace`
-- `User`
-- `Task`
-- `Workflow`
-- `Artifact`
-- `MemoryRecord`
-- `Trace`
-- `RuntimeConfig`
-- `PolicyDecision`
-- `Department` / `Agent Role` (Agent Company layer)
-
-**Правило:** если информация должна пережить одну сессию и влиять на будущие решения, она должна существовать как сущность State Layer, а не как неструктурированная история сообщений.
+Все Runtime‑компоненты (Planner, Orchestrator, Agents, Tools, Evolution, Observability) должны использовать этот протокол как **single source of truth** о контексте.
 
 ---
 
-## 3. Sources of Context
+## 2. Context Envelope Overview
 
-Для каждого runtime‑вызова Planner’а и/или LLM доступны следующие типы контекста:
+Базовая сущность — **Runtime Context Envelope**:
 
-| # | Источник | Назначение |
-|---|----------|-----------|
-| 1 | **System / Runtime Policy** | Kernel axioms, autonomy limits, budget rules, anti‑goals, role/mode constraints, deployment/gov settings |
-| 2 | **Task / Workflow Intent** | Текущий запрос пользователя, business goal, task_type, explicit constraints, autonomy tier |
-| 3 | **Short-Term Conversation** | Последние `N` сообщений текущего execution window |
-| 4 | **Conversation Summary** | Компактное резюме старой истории, если она уже не влезает в short‑term window |
-| 5 | **Memory Records** | Эпизодическая/семантическая память: прошлые задачи, решения, ошибки, lessons learned |
-| 6 | **Task / Workflow / Artifact Context** | Файлы, артефакты, промежуточные результаты, task/workflow metadata |
-| 7 | **Knowledge Context** | Repo/docs/web/file context, retrieved через tools / retrieval pipeline под политиками |
-| 8 | **Trace / Governance Signals** | Предыдущие решения, applied policies, runtime_config_version, failure patterns, billable events |
+- создаётся при старте `task` / `workflow` (по `task_id`),
+- сопровождает все LLM‑вызовы, agent‑handoff, tool‑calls,
+- сериализуется в TraceStore / episodes для реконструкции.[cite:359][cite:362]
 
----
+В терминах JSON это объект вида:
 
-## 4. Runtime Modes
-
-Planner всегда работает в одном из трёх режимов. **Режим определяется RuntimePlanner** на основе текущего запроса, недавней истории, task_type и контекстных триггеров.
-
-| Режим | Триггер | Цель |
-|-------|---------|------|
-| `NORMAL` | По умолчанию | Ответы, выполнение задач, планирование, стандартный рабочий поток |
-| `DIAGNOSTICS` | Сигналы: `сломалось`, `ошибка`, `traceback`, `баг`, `fix`, `не работает`, incident‑like phrasing | Локальная диагностика, конкретные шаги фикса, structured troubleshooting |
-| `VISION` | Явный запрос: `архитектура`, `roadmap`, `эволюция`, `north star`, `как работает Pith`, `self-analysis` | Архитектурные ответы, стратегическое планирование, допустимый deep self‑analysis |
-
-**Правило:** режим `VISION` включается только по явному сигналу. Он не должен случайно срабатывать в обычной задаче.
-
----
-
-## 5. Context Assembly by Mode
-
-### 5.1 NORMAL
-
-1. **System / Runtime Policy**
-2. **Task / Workflow Intent**
-3. **Последние `N` сообщений**
-4. **Conversation Summary** — только если история длинная
-5. **Top‑M Memory Records**
-6. **Task / Workflow / Artifact Context**
-7. **Knowledge Context** — только по необходимости или по запросу Planner’а
-8. **Trace / Governance Signals** — только если влияют на execution path или autonomy/budget
-
-**Ограничение:** в `NORMAL` режиме Planner не инициирует длинный AGI/self‑analysis без прямого запроса.
-
-### 5.2 DIAGNOSTICS
-
-1. **System / Policy + diagnostics mode block**
-2. **Task / Incident Intent**
-3. **Последние сообщения**, особенно error logs / stack traces
-4. **Summary** — только если относится к предыдущим сбоям
-5. **Memory** — только прошлые инциденты того же класса
-6. **Artifacts** — логи, конфиги, схемы, failing outputs
-7. **Trace / Governance** — последние relevant decisions, runtime_config_version, failure patterns
-8. **Knowledge Context** — только если нужен для root cause analysis
-
-**Запреты:**
-
-- нет длинных AGI‑эссе;
-- нет расплывчатых roadmap‑ответов вместо root cause / next fix steps;
-- нет подмешивания нерелевантной философии Pith.
-
-### 5.3 VISION
-
-1. **System / Policy + `mode=vision`**
-2. **Task Intent (vision/meta‑запрос)**
-3. **Architectural Summary**
-4. **Memory** — только records, относящиеся к `projects.pith.*` и ключевым постмортемам
-5. **Artifacts** — `PITH_KERNEL`, `ARCHITECTURE_NORTH_STAR`, `PITH_AGENT_COMPANY`, ADR, roadmaps, docs по OBS/EVAL/GOV/DEPLOYMENT
-6. **Trace / Governance Signals** — если нужны для анализа состояния системы и эволюции
-7. **Knowledge Context** — repo/docs/архитектурные материалы
-
-**Допустимо:**
-
-- длинные структурированные ответы;
-- системный self‑analysis;
-- обсуждение roadmap, architecture debt, gaps, future phases.
-
----
-
-## 6. Priority Rules & Conflict Resolution
-
-При построении контекста RuntimePlanner соблюдает строгий приоритет:
-
-1. `System / Runtime Policy`
-2. `Runtime Mode`
-3. `Task / Workflow Intent`
-4. `Short-Term Conversation`
-5. `Conversation Summary`
-6. `Memory Records`
-7. `Task / Workflow / Artifact Context`
-8. `Knowledge Context`
-9. `Trace / Governance Signals` как override only when execution‑critical
-
-**При конфликте:**
-
-- system policy сильнее memory;
-- mode сильнее старых разговоров;
-- текущий запрос сильнее summary;
-- memory не имеет права переписывать policy;
-- retrieved knowledge не имеет права ломать autonomy/budget constraints.
-
----
-
-## 7. Self-Reflection Policy
-
-Чтобы не превращаться в “болтливую AGI‑персону”, Pith придерживается правил:
-
-- **Один большой self‑analysis на сессию**, только в `VISION` и только по явному запросу.
-- В `NORMAL` и `DIAGNOSTICS` самоанализ ограничен: максимум 2–3 коротких наблюдения, только если это полезно задаче.
-- Старые self‑analysis blocks могут учитываться как background, но не становятся директивой к текущему ответу.
-- Любая попытка модели развернуть manifesto‑like output в рабочем режиме фиксируется Evaluator’ом как `persona_drift`.
-
----
-
-## 8. Summary & Memory Update Policy
-
-После значимого шага или завершения задачи:
-
-1. **Summary Update**
-   - Краткое резюме сессии обновляется инкрементально.
-   - Оно должно быть background‑only, а не скрытым system prompt.
-
-2. **Memory Record Update**
-   - Сохраняются только:
-     - успешные/провальные задачи,
-     - root causes,
-     - устойчивые решения,
-     - reusable procedures,
-     - важные артефакты,
-     - lessons learned.
-   - Теги: `tenant_id`, `workspace_id`, `task_type`, `risk_level`, `topic`, `source_task`.
-
-3. **Trace / Governance Update**
-   - Важные runtime‑шаги фиксируют `Trace`.
-   - При необходимости фиксируются `PolicyDecision`, `RuntimeConfig` / `runtime_version`, billable events.
-
----
-
-## 9. Token Budget & Pruning Rules
-
-Контекст собирается не “целиком”, а под budget.
-
-### 9.1 Budget Order
-
-При нехватке окна context pruning идёт в таком порядке:
-
-1. Урезать `Short-Term Conversation` до релевантного окна.
-2. Сжать `Conversation Summary`.
-3. Сократить количество `Memory Records`.
-4. Оставить только наиболее релевантные `Artifacts`.
-5. Отложить `Knowledge Context`, если он не execution‑critical.
-6. Никогда не выбрасывать:
-   - system/runtime policy,
-   - current task/workflow intent,
-   - mode block.
-
-### 9.2 Relevance Rules
-
-Каждый memory/artifact/context block должен оцениваться хотя бы по:
-
-- semantic relevance to current task/workflow,
-- workspace / tenant match,
-- recency,
-- trust / importance,
-- incident similarity (для diagnostics).
-
-### 9.3 Hard Constraints
-
-- Не подмешивать больше context, чем реально может быть использовано.
-- Если retrieval weak/noisy, лучше меньше, но чище.
-- Context assembly должен уменьшать entropy, а не увеличивать её.
-
----
-
-## 10. Mode Detection Rules
-
-`RuntimePlanner` или будущий `ModeDetector` определяет режим на основе:
-
-- keywords,
-- intent classification,
-- task_type,
-- history slice,
-- explicit user request.
-
-### Minimal heuristic baseline
-
-- `DIAGNOSTICS`: error‑like markers, bug/fix phrasing, logs, traceback, “не работает”.
-- `VISION`: architecture/roadmap/evolution/governance/meta‑analysis requests.
-- иначе `NORMAL`.
-
-### Override rules
-
-- Explicit user ask сильнее heuristic.
-- Если есть ambiguity между `NORMAL` и `VISION`, предпочитать `NORMAL`.
-- Если есть ambiguity между `NORMAL` и `DIAGNOSTICS` и присутствуют реальные error signals, предпочитать `DIAGNOSTICS`.
-
----
-
-## 11. Implementation Contract
-
-`RuntimePlanner` использует `ContextAssembler` примерно в такой форме:
-
-```python
-context = context_assembler.build(
-    mode=RuntimeMode.NORMAL | RuntimeMode.DIAGNOSTICS | RuntimeMode.VISION,
-    tenant_id=tenant_id,
-    workspace_id=workspace_id,
-    user_id=user_id,
-    task_id=task_id,
-    workflow_id=workflow_id,
-    autonomy_level=autonomy_level,
-    runtime_config_version=runtime_config_version,
-    query=user_query,
-    recent_history=history_slice,
-)
-```
-
-### Expected output shape
-
-```python
+```json
 {
-    "system_policy": "...",
-    "mode_block": "...",
-    "task_intent": "...",
-    "recent_history": [...],
-    "summary": "...",
-    "memory_records": [...],
-    "artifacts": [...],
-    "knowledge_context": [...],
-    "trace_signals": [...],
-    "token_estimate": 0,
-    "pruning_applied": [...],
+  "envelope_version": "1",
+  "trace_id": "uuid-or-hex",
+  "task": { ... },
+  "subject": { ... },
+  "workspace": { ... },
+  "governance": { ... },
+  "context": { ... },
+  "artifacts": { ... },
+  "billing": { ... },
+  "runtime": { ... }
 }
 ```
 
-### RuntimePlanner responsibilities
-
-- определить mode;
-- установить autonomy_level и runtime_config_version;
-- запросить контекст у `ContextAssembler`;
-- при необходимости сократить/очистить его;
-- передать финальный assembled context в execution path;
-- записать trace signal о том, какой context profile был использован.
-
-### ContextAssembler responsibilities
-
-- собрать контекст из state/memory/artifacts/retrieval;
-- соблюдать порядок приоритетов;
-- не нарушать budget / policy constraints;
-- не смешивать нерелевантный background с task‑critical context;
-- возвращать структурированный context package, а не один сырой prompt string.
+Далее описаны требования к каждому блоку.
 
 ---
 
-## 12. Trace & Observability Alignment
+## 3. Identity & Subject Block
 
-Context assembly само по себе должно быть наблюдаемым.
+### 3.1 subject
 
-Минимально фиксируемые сигналы:
+```json
+"subject": {
+  "tenant_id": "tenant-123",
+  "workspace_id": "ws-repo-x",
+  "user_id": "user-viktor",
+  "acting_agent_id": "agent.Tera",
+  "department_id": "dept.Research",
+  "origin_interface": "telegram|cli|web"
+}
+```
 
-- mode chosen,
-- autonomy_level,
-- runtime_config_version,
-- memory blocks count,
-- artifact blocks count,
-- retrieval used / not used,
-- pruning applied / not applied,
-- token estimate.
+- `tenant_id`, `workspace_id` — из State Plane (Workspace Substrate).
+- `user_id` — инициатор работы (или `system` для внутренних задач).
+- `acting_agent_id` — текущий агент, от имени которого выполняется шаг.
+- `department_id` — департамент Agent Company (если применимо).
+- `origin_interface` — интерфейс, откуда пришёл запрос (для UX/limits).[cite:343][cite:349]
 
-На текущем этапе task‑level observability обеспечивается через **TraceStore v1** (`task_traces` в `episodes.db`). Далее поверх него наращиваются:
+### 3.2 identity snapshot
 
-- per‑LLM‑call spans,
-- per‑agent/department spans,
-- evaluator linkage,
-- trace query/read surfaces.
-
----
-
-## 13. Failure & Fallback Behavior
-
-Если один из источников контекста недоступен:
-
-- отсутствие memory не должно ломать task execution;
-- отсутствие summary не должно ломать runtime;
-- retrieval failure не должен ломать базовый task path;
-- planner должен деградировать gracefully к меньшему, но чистому context package.
-
-**Правило:** плохой или шумный context хуже, чем неполный, но надёжный context.
+Опционально: инлайн‑снимок ключевых Identity‑атрибутов (roles, groups) для уменьшения числа round‑trips к IAM.
 
 ---
 
-## 14. Guarantees of the Protocol
+## 4. Task & Workspace Block
 
-Этот протокол должен обеспечивать:
+### 4.1 task
 
-1. **Task‑focus by default** — обычные задачи не деградируют в meta‑manifesto.
-2. **Mode‑aware behavior** — diagnostics и vision реально ведут себя по‑разному.
-3. **Policy‑first context** — memory и retrieval не переписывают runtime constraints.
-4. **Continuity without overload** — контекст сохраняется, но не превращается в шум.
-5. **Governable assembly** — можно объяснить, почему именно такой context был собран.
-6. **Graceful degradation** — отсутствие части context sources не ломает весь pipeline.
+```json
+"task": {
+  "task_id": "task-uuid",
+  "parent_task_id": null,
+  "workflow_id": "wf.sales.outreach.v1",
+  "task_type": "general_work|code_edit|research|workflow_run",
+  "intent": "short natural language description",
+  "created_at": "2026-05-18T13:40:00Z",
+  "mode": "NORMAL|DIAGNOSTICS|VISION"
+}
+```
+
+- `task_id` — ключевая сущность для TraceStore.
+- `workflow_id` — для департаментных workflows.
+- `task_type` — классификация Planner’а.
+- `mode` — режим (`NORMAL`, `DIAGNOSTICS`, `VISION`, и др. — см. Kernel).[cite:361]
+
+### 4.2 workspace
+
+```json
+"workspace": {
+  "workspace_id": "ws-repo-x",
+  "tenant_id": "tenant-123",
+  "name": "Repo X",
+  "repo_bindings": [
+    {
+      "repo_id": "repo-backend",
+      "path": "/srv/repos/backend",
+      "branch": "main"
+    }
+  ],
+  "tags": ["engineering", "internal"]
+}
+```
+
+Workspace‑блок служит для:
+
+- правильной работы Memory/Artifacts,
+- ограничений по данным (governance),
+- привязки к billing scope.[cite:361][cite:366]
 
 ---
 
-## 15. Non-Goals
+## 5. Governance Block
 
-Этот протокол **не описывает**:
+Этот блок соединяет **Governance v1** с runtime:
 
-- конкретный prompt wording для каждой модели;
-- формат всех tool contracts;
-- полный Memory v2 schema;
-- внутреннее устройство repo indexing / web research pipeline;
-- policy engine во всей полноте.
+```json
+"governance": {
+  "policy_id": "policy-default-2026-05",
+  "autonomy_tier": 1,
+  "requested_autonomy_tier": 1,
+  "action_class": "draft|send|mutate_system|spend_money",
+  "approval_state": "none|pending_review|approved|rejected|escalated|expired",
+  "approval_required": false,
+  "approval_checkpoint_id": null,
+  "permissions_snapshot": {
+    "subjects": ["user:user-viktor", "agent:agent.Tera"],
+    "allowed_actions": ["read", "draft", "write_internal"],
+    "denied_actions": ["change_access", "delete"],
+    "tool_permissions": {
+      "tool.git": ["read", "write_internal"],
+      "tool.crm": ["read"]
+    }
+  }
+}
+```
 
-Он определяет именно **runtime contract контекстной сборки**, а не всю архитектуру Pith.
+- `policy_id` — активная политика (из Governance).
+- `autonomy_tier` — текущий уровень автономии (Tier 0–4).
+- `requested_autonomy_tier` — уровень, который хочет runtime (для контроля повышения).
+- `action_class` — текущий тип действия (см. Governance).
+- `approval_state` / `approval_required` / `approval_checkpoint_id` — связь с HITL.[cite:338][cite:344]
+- `permissions_snapshot` — минимальный снимок прав на момент шага (опционально).
+
+Все решения Policy Engine должны ссылаться на этот блок и обновлять его по мере изменения состояния (approval, escalation, deny).
 
 ---
 
-## 16. One-Line Rule
+## 6. Context Block (Memory, Session, External)
 
-> **Context in Pith is assembled around work, not around chat.**
+### 6.1 Общая структура
+
+```json
+"context": {
+  "session": {
+    "history": [...],
+    "summary": "short rolling summary"
+  },
+  "memory": {
+    "short_term": [...],
+    "episodic_refs": [...],
+    "semantic_refs": [...],
+    "profile_refs": [...]
+  },
+  "external": {
+    "repo_fragments": [...],
+    "docs_fragments": [...],
+    "web_snippets": [...]
+  },
+  "working_set": {
+    "system_instructions": "...",
+    "agent_identity_prompt": "...",
+    "selected_items": [...],
+    "few_shots": [...]
+  }
+}
+```
+
+### 6.2 session
+
+- `history` — последние n turn’ов (не обязательно полный диалог).
+- `summary` — rolling summary для continuity.[cite:361]
+
+### 6.3 memory.*
+
+Здесь **ссылки**, а не весь payload:
+
+```json
+"memory": {
+  "short_term": [
+    { "episode_id": 1234 }
+  ],
+  "episodic_refs": [
+    { "episode_id": 5678, "reason": "same topic" }
+  ],
+  "semantic_refs": [
+    { "doc_id": "doc-abc", "chunk_id": "chunk-1" }
+  ],
+  "profile_refs": [
+    { "profile_id": "user-viktor.pref-general" }
+  ]
+}
+```
+
+Реальные данные вытягиваются Retrieval‑слоем; ContextAssembler лишь решает, что **включать** в working_set.
+
+### 6.4 external
+
+Фрагменты из:
+
+- репозитория (RepoIndexer),
+- docs/notes,
+- web‑ресёрча.[cite:355][cite:361]
+
+### 6.5 working_set
+
+То, что реально попадает в prompt текущей LLM‑операции:
+
+- `system_instructions` — Kernel/Agent system message.
+- `agent_identity_prompt` — persona/role агента.
+- `selected_items` — куски истории, memory, external.
+- `few_shots` — демонстрации.
+
+ContextAssembler отвечает за сбор и pruning working_set.[cite:358][cite:361]
+
+---
+
+## 7. Artifact Block
+
+Артефакты — first‑class layer (см. MASTER_PLAN).
+
+```json
+"artifacts": {
+  "inputs": [
+    { "artifact_id": "art-plan-123", "type": "plan", "role": "reference" }
+  ],
+  "outputs": [
+    { "artifact_id": "art-report-456", "type": "report", "role": "draft" }
+  ],
+  "lineage": {
+    "created_from_task_ids": ["task-uuid"],
+    "derived_from_artifact_ids": ["art-plan-123"]
+  }
+}
+```
+
+- `inputs` — артефакты, которые используются как контекст.
+- `outputs` — артефакты, создаваемые/обновляемые этим task.
+- `lineage` — связи для последующего анализа и governance.[cite:357][cite:360]
+
+Runtime обязан обновлять artifact block после создания/изменения артефактов.
+
+---
+
+## 8. Billing Block
+
+Этот блок связывает runtime‑операции с billing model.
+
+```json
+"billing": {
+  "tenant_id": "tenant-123",
+  "workspace_id": "ws-repo-x",
+  "billing_unit": "task|workflow|artifact|outcome",
+  "billing_context": {
+    "department_id": "dept.Sales",
+    "workflow_id": "wf.sales.outreach.v1",
+    "plan": "self_hosted|managed|vertical_pack",
+    "tags": ["sales", "outreach"]
+  },
+  "cost_caps": {
+    "task_usd_limit": 0.50,
+    "workspace_monthly_usd_limit": 30.0,
+    "premium_hops_limit": 8
+  },
+  "runtime_cost_estimate": {
+    "input_tokens": 1234,
+    "output_tokens": 567,
+    "estimated_usd": 0.023
+  }
+}
+```
+
+- `billing_unit` — способ биллинга для данного task/workflow.
+- `billing_context` — связи с департаментами/пакетами (Agent Company).
+- `cost_caps` — лимиты (из budget policy).
+- `runtime_cost_estimate` — живые оценки cost (для pre‑flight checks).[cite:365]
+
+Policy Engine и Budget Guard читают/обновляют этот блок.
+
+---
+
+## 9. Runtime Block
+
+Технические детали выполнения:
+
+```json
+"runtime": {
+  "runtime_version": "5.2.0",
+  "runtime_config_id": "rt-config-2026-05",
+  "router_mode": "core|coder|agent|free|long_context|premium",
+  "model_lane": "chat_default|code_paid|reasoner_free",
+  "model_id": "deepseek/deepseek-v4-flash",
+  "tool_plane": {
+    "mcp_sessions": [
+      { "server": "git-server", "session_id": "..." }
+    ],
+    "a2a_sessions": [
+      { "peer_agent_id": "agent.Scheduler", "session_id": "..." }
+    ]
+  },
+  "diagnostics": {
+    "debug_flags": ["trace_context", "log_prompts"],
+    "correlation_id": "optional-operator-defined"
+  }
+}
+```
+
+Здесь важно:
+
+- `runtime_config_id` — чтобы можно было восстановить состояние конфигурации.
+- `router_mode` / `model_lane` / `model_id` — для observability и eval.
+- `tool_plane` — ссылочная информация о MCP/A2A‑сессиях.[cite:354][cite:356][cite:357]
+
+---
+
+## 10. Trace & Correlation
+
+`trace_id` — ключевой корреляционный идентификатор:
+
+- создаётся на старте `task`,
+- общий для всех spans (LLM‑вызовы, tools, агенты, approvals),
+- используется для связи логов, метрик, billing‑events и governance‑решений.[cite:359][cite:362][cite:365]
+
+Рекомендуется:
+
+- использовать W3C Trace Context/совместимый формат, чтобы легко сквозить через внешние системы;
+- различать `trace_id` (операция) и `correlation_id` (батч, кампания, инцидент).[cite:362][cite:365]
+
+---
+
+## 11. Context Assembly & Pruning
+
+### 11.1 Sources
+
+ContextAssembler собирает working context из:
+
+- session history,
+- memory (short‑term, episodic, semantic, profile),
+- artifacts,
+- external sources (repo/docs/web),
+- governance/billing/identity блоков (для system‑prompt).[cite:358][cite:361]
+
+### 11.2 Heuristics
+
+Для v1 достаточно:
+
+- лимиты по токенам;
+- приоритеты: свежий контекст и явно привязанные артефакты > старый history;
+- фильтрация по workspace/tenant/permissions;
+- маркировка чувствительных данных, чтобы governance мог принять решение.[cite:358][cite:361][cite:364]
+
+---
+
+## 12. Modes & Diagnostics
+
+Протокол должен поддерживать режимы:
+
+- `NORMAL` — обычный рабочий контекст.
+- `DIAGNOSTICS` — расширенный логгинг, больше метаданных, включён `log_prompts` (для dev).
+- `VISION` — контекст, включающий визуальные/мультимодальные поля (картинки, схемы).
+
+Поле `task.mode` и `runtime.diagnostics.debug_flags` должны управлять объёмом данных и тем, что уходит в traces.[cite:361]
+
+---
+
+## 13. Backwards Compatibility
+
+Старый `Runtime Context Protocol v1 (Deprecated)` остаётся только как шима/редирект:
+
+- любые новые компоненты обязаны использовать `PITH_RUNTIME_CONTEXT_PROTOCOL_V1` как канон;
+- изменения должны быть **backwards‑compatible**, пока `envelope_version` не поднимется (например, до `"2"`).
+
+---
+
+## 14. Invariants & Guarantees
+
+Для любого валидного envelope Pith гарантирует:
+
+1. `trace_id`, `task.task_id`, `subject.workspace_id`, `subject.tenant_id` **всегда присутствуют**.
+2. Любая внешняя операция (tool/API/LLM) может быть связана с envelope через `trace_id`.
+3. Governance/Billing/Eval могут восстановить контекст задачи **из одной записи** envelope + событий trace.[cite:359][cite:365]
+4. Ни один агент не может получить контекст вне своих прав: ContextAssembler обязан учитывать `governance.permissions_snapshot`.
+
+---
+
+## 15. Integration Points
+
+Этот протокол обязателен для:
+
+- Planner / Orchestrator,
+- Agent Company workflows,
+- Runtime Evaluator (Eval Ops),
+- Governance Engine,
+- TraceStore / Observability,
+- Billing Event pipeline,
+- MCP/A2A bridging (tool plane).
+
+Любая новая фича, меняющая контекст (новые поля/блоки), должна **сначала** приземляться в `PITH_RUNTIME_CONTEXT_PROTOCOL_V1`, и только потом — в реализацию.

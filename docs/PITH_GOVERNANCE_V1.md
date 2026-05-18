@@ -1,15 +1,15 @@
 # Pith Governance v1
 
-> Governance architecture for Pith v5 as a runtime-native, continuity-aware, multi-agent operating system.
+> Governance architecture for Pith v5 as a runtime‑native, continuity‑aware, multi‑agent operating system.
 
 ---
 
 ## 1. Purpose
 
-Pith Governance v1 defines how Pith controls authority, approvals, action boundaries, policy enforcement, and accountability.
+Pith Governance v1 defines how Pith controls **authority, approvals, autonomy levels, action boundaries, policy enforcement, and accountability** across workspaces, agents, and departments.[web:338][web:342]
 
-Governance in Pith is not a legal appendix.
-It is an execution control layer that determines:
+Governance in Pith is not a legal appendix.  
+It is an **execution control layer** that determines:
 
 - what the system is allowed to do,
 - what requires approval,
@@ -18,28 +18,28 @@ It is an execution control layer that determines:
 - what must remain reversible,
 - what level of autonomy is appropriate for each workflow.
 
-This document exists because agent capability without governance becomes unsafe, untrustworthy, and commercially fragile.[web:2104][web:2107]
+This document exists because agent capability without governance becomes unsafe, untrustworthy, and commercially fragile.[web:339][web:342]
 
-Governance is implemented as a **runtime control plane** — policies are enforced before and during execution, not only at design time.
+Governance is implemented as a **runtime control plane** — policies are enforced before и во время выполнения, а не только на этапе дизайна.[web:341]
 
 ---
 
-## 2. Why Governance Is First-Class
+## 2. Why Governance Is First‑Class
 
-Pith is evolving toward:
+Pith эволюционирует в сторону:
 
-- a workspace-native runtime,
-- an Agent Company OS,
-- a governed execution environment,
-- a monetizable multi-agent system.
+- workspace‑native runtime,
+- Agent Company OS,
+- governed execution environment,
+- монетизируемой multi‑agent системы.
 
-In this context, the main production question is not only:
-**“Can the system do this?”**
+В этом контексте главный продакшен‑вопрос — не только  
+**«Can the system do this?»**
 
-It is also:
-**“Should the system be allowed to do this now, in this context, at this autonomy level, under these constraints?”**[web:2104][web:2109]
+Но и:  
+**«Should the system be allowed to do this now, in this context, at this autonomy level, under these constraints?»**[web:342][web:348]
 
-Governance is therefore part of runtime architecture, not an external compliance wrapper.
+Поэтому governance — часть архитектуры рантайма, а не внешний compliance‑wrapper: Planner/Orchestrator/Tools работают под управлением Governance Plane, а не независимо от него.[web:341]
 
 ---
 
@@ -47,158 +47,133 @@ Governance is therefore part of runtime architecture, not an external compliance
 
 ### 3.1 Policy before dispatch
 
-A workflow or action should be evaluated against policy **before** execution, not only after the fact.[web:2113]
+Любой workflow или действие должно оцениваться против политики **до** выполнения, а не только пост‑фактум.[web:342]
 
-Policy checks must intercept high‑impact actions (tool calls, sends, publishes, mutations, spend) at runtime.
+Policy‑checks должны перехватывать high‑impact действия (tool calls, sends, publishes, mutations, spend) на уровне Runtime/Orchestrator.
 
 ### 3.2 Explicit authority boundaries
 
-Each workflow, department, tool, and action type must operate within declared authority.
-Authority is a function of:
+Каждый workflow, department, tool и класс действий работает в явных рамках authority:
 
 - actor (user/agent/department),
 - autonomy tier,
 - action class,
-- context (tenant/workspace, data sensitivity).
+- context (tenant/workspace, data sensitivity).[web:343][web:349]
 
-### 3.3 Risk-tiered autonomy
+### 3.3 Risk‑tiered autonomy
 
-Not all actions deserve the same level of autonomy.
-Higher-risk actions require stronger controls and higher‑tier approvals.[web:2108][web:2111]
+Не все действия заслуживают одинаковой автономии.  
+Чем выше риск/невозвратимость, тем жёстче контуры контроля и approval.[web:341][web:351]
 
 ### 3.4 Human oversight where needed
 
-Human approval is not a weakness.
-It is a mechanism for scaling safely and for satisfying regulatory and business risk constraints.
+Human‑in‑the‑loop — это **дизайн‑выбор**, а не «провал автоматизации».[web:340][web:348]  
+Он нужен для:
+
+- безопасного масштабирования,
+- соответствия бизнес‑рискам и регуляторным ожиданиям,
+- постепенного повышения автономии.
 
 ### 3.5 Auditability by default
 
-Every important decision and action should be reconstructible from traces and governance records with clear decision lineage.[web:2108][web:2112]
+Каждое важное решение/действие должно быть реконструируемо из traces и governance‑записей с понятным decision lineage.[web:342][web:351]
 
 ### 3.6 Reversibility awareness
 
-If an action is irreversible or high-blast-radius, governance must treat it differently from low-risk drafting work:
+Для необратимых или high‑blast‑radius действий governance должен:
 
-- stricter policies,
-- more approvals,
-- canary and rollback where possible.
+- повышать требования к политикам и approvals,
+- использовать canary/rollback, где возможно,
+- ограничивать максимальный autonomy tier.
 
 ### 3.7 Workspace and tenant safety
 
-Governance must preserve workspace boundaries and prevent cross-tenant misuse.
+Governance обязан сохранять workspace/tenant‑границы и не позволять обходить их:
 
-No agent or department should be able to bypass tenant/workspace isolation or policy engine via “hidden tools” or direct integrations.
-
----
-
-## 4. Governance Layers
-
-Pith Governance should operate across five layers.
-
-### 4.1 Decision Governance
-
-Controls planner/orchestrator choices such as:
-
-- allowed runtime modes,
-- allowed autonomy level,
-- department eligibility,
-- route restrictions,
-- confidence/risk thresholds for automatic decisions.[web:2112]
-
-### 4.2 Context Governance
-
-Controls what memory, artifacts, and context can be accessed:
-
-- workspace scoping,
-- role-based context visibility,
-- sensitive data restrictions,
-- retrieval boundaries.
-
-### 4.3 Action Governance
-
-Controls whether a proposed action may execute:
-
-- tool usage permissions,
-- budget caps,
-- publish/send/mutate/delete restrictions,
-- spending thresholds,
-- escalation triggers.
-
-Policy engine should sit **before** external side effects (APIs, sends, writes) and return explicit outcomes.
-
-### 4.4 Output Governance
-
-Controls what may be emitted externally:
-
-- public communication,
-- customer-facing content,
-- regulated outputs,
-- sensitive summaries,
-- export behavior (reports, logs).
-
-### 4.5 Audit & Accountability Governance
-
-Controls:
-
-- logging requirements,
-- ownership tracking,
-- approval records,
-- policy evidence,
-- postmortem compatibility.
-
-Audit artifacts should be compatible with external regulatory/audit expectations (decision lineage, timestamps, actors).[web:2108]
+- ни агентам / департаментам,
+- ни внешним интеграциям,
+- ни operator tools.[web:343][web:349]
 
 ---
 
-## 5. Governance Outcomes
+## 4. Identity & Subject Model
 
-Every action or workflow policy check should produce one of a small set of outcomes:
+Этот слой отвечает на вопрос: **кто действует?**
 
-- `allow`
-- `allow_with_constraints`
-- `require_approval`
-- `deny`
-- `escalate`
+### 4.1 Subject Types
 
-These outcomes should be explicit, inspectable, and logged with rule/policy identifiers.[web:2110][web:2113]
+В Pith есть пять типов субъектов:[web:343][web:349]
 
-### 5.1 allow
+- **User** — человек, инициирующий работу (owner workspace, collaborator).
+- **Operator** — человек с правами управлять конфигами, лимитами, департаментами.
+- **Agent** — программный актор в Runtime (Tera, Plex, Hex, Coda, департаментные агенты).
+- **Department** — логическое объединение агентов и workflows (Sales, Marketing, Research, Delivery, Support/Ops).
+- **External Service** — Git, CI/CD, CRM, календарь, внешние API.
 
-The action is permitted without additional gates.
+### 4.2 Identifiers
 
-### 5.2 allow_with_constraints
+Для governance любая операция описывается в разрезе:
 
-The action is allowed, but only with enforced limits.
+- `tenant_id`
+- `workspace_id`
+- `user_id`
+- `agent_id`
+- `department_id`
+- `runtime_config_id`
+- `policy_id`
 
-Examples:
+Runtime Context Protocol обязан включать эти идентификаторы в контекст любого task/workflow.[web:346][web:349]
 
-- read-only mode,
-- cost cap,
-- depth limit,
-- restricted tool subset,
-- draft-only output.
+---
 
-### 5.3 require_approval
+## 5. Permissions & Policy Model
 
-A human gate is required before dispatch or completion.
-Governance must record who approved, under what policy snapshot, and with what justification.
+Этот слой отвечает на вопрос: **что субъект может делать?**
 
-### 5.4 deny
+### 5.1 Scopes
 
-The action is blocked.
-Denials should be explicit, explainable, and auditable.[web:2110]
+Scopes прав:
 
-### 5.5 escalate
+- **Tenant** — создание/удаление workspaces, глобальные лимиты.
+- **Workspace** — доступ к задачам, артефактам, репозиториям.
+- **Task / Workflow** — запуск, пауза, отмена, изменение конфигов.
+- **Artifact** — чтение/редактирование/публикация/удаление.
+- **Tool** — использование конкретных инструментов (shell, git, HTTP, внешние API).
+- **Department** — запуск workflows департаментов, просмотр outcomes.[web:343]
 
-The action is too ambiguous, high-risk, or policy-sensitive for normal routing and should move to a higher-trust human/operator path (e.g. security, compliance, executive).
+### 5.2 Actions
+
+Базовые действия:
+
+- `read`
+- `write`
+- `execute`
+- `approve`
+- `publish`
+- `override`
+- `configure`
+
+Пример:  
+`agent_id=Sales.Outreach` может иметь `execute` на `lead_outreach_workflow` внутри конкретного `workspace_id`, но не иметь `execute` на `billing_refund_workflow` или `change_access`.[web:343][web:349]
+
+### 5.3 Policy Representation
+
+Policies задаются декларативно (YAML/JSON) и интерпретируются Policy Engine:
+
+- `subject`: `user` / `agent` / `department`
+- `scope`: `workspace` / `task` / `artifact` / `tool`
+- `actions`: allow/deny
+- `conditions`: лимиты по сумме, времени, типу данных, autonomy tier, risk‑классу.
+
+Policy‑решения принимаются **до** опасных действий (см. Action Classes) и логируются в TraceStore/episodes как governance‑events.[web:342][web:351]
 
 ---
 
 ## 6. Action Classes
 
-Pith should classify actions into stable categories because governance becomes clearer when actions are typed.[web:2113]
+Чтобы governance был управляемым, Pith классифицирует действия по стабильноим типам, а не по конкретным tools.[web:342][web:351]
 
-Suggested action classes:
+Рекомендуемые классы:
 
 - `read`
 - `retrieve`
@@ -215,121 +190,208 @@ Suggested action classes:
 - `delete`
 - `export_sensitive`
 
-These categories are more important than specific tool names.
-Tool governance should map tools and endpoints to action classes.
+Mapping tool→action_class хранится в tool registry: один tool может реализовывать несколько классов (например, CRM‑клиент — `read`, `write_internal`, `mutate_system`).
 
 ---
 
 ## 7. Autonomy Tiers
 
-Pith should define stable autonomy tiers (aligned with Kernel autonomy levels).
+Этот слой отвечает на вопрос: **насколько самостоятельно субъект может действовать?**  
+Он должен быть согласован с Kernel autonomy уровнями (L0–L4).[web:341][web:350]
 
 ### 7.1 Tier 0 — Advisory
 
-The system can analyze, summarize, recommend, and draft.
-No external action (`read` / `analyze` / `draft` / `recommend` only).
+- Разрешены: `read`, `retrieve`, `analyze`, `draft`, `recommend`.
+- Запрещены: любые внешние side‑effects (`send`, `publish`, `mutate_system`, `spend_money`).
 
 ### 7.2 Tier 1 — Assisted Execution
 
-The system may prepare actions and perform low-risk internal actions.
-Human review is expected for important outcomes, especially `send`, `publish`, `spend_money`, `mutate_system`.
+- Агент может готовить действия и выполнять low‑risk `write_internal` и часть `mutate_system` в sandbox.
+- Любые `send`/`publish`/`spend_money`/high‑impact `mutate_system` требуют approval.
 
 ### 7.3 Tier 2 — Supervised Autonomy
 
-The system may execute pre-approved workflow segments under constraints.
-Critical actions still require human approval or escalation.
+- Агент может автономно выполнять часть заранее одобренных workflow‑сегментов под budget/контекст‑ограничениями.
+- High‑risk action classes всё ещё требуют approvals или escalation.
 
 ### 7.4 Tier 3 — Operational Autonomy
 
-The system may perform bounded operational actions autonomously under strong policy, observability, and evaluation controls.[web:2111]
+- Система может выполнять bounded operational actions автономно под жёсткими policy/OBS/EVAL‑контролями.[web:342]
+- Используется только для хорошо оттестированных, обратимых сценариев.
 
-### 7.5 Tier 4 — High-Autonomy Restricted
+### 7.5 Tier 4 — High‑Autonomy Restricted
 
-Only for highly controlled, proven workflows with explicit governance, evaluation, and rollback confidence.
+- Только для крайне контролируемых, доказано стабильных workflows.
+- Требует явного risk‑acceptance и усиленного мониторинга.
 
-Pith v1 should mostly target Tier 0–2.
-Tier 3 should be selective.
-Tier 4 should be exceptional and require explicit executive‑level risk acceptance.[web:2111]
+Для Pith v5–v6 целю является активное использование Tier 0–2, точечное Tier 3 и крайне ограниченный / почти отсутствующий Tier 4.[web:341][web:350]
 
 ---
 
-## 8. Approval Matrix
+## 8. Human‑in‑the‑Loop (Approval Model)
 
-Pith should maintain a human approval matrix tied to action class and blast radius.
+Этот слой отвечает на вопрос: **когда нужен человек?**
 
-### Typical approval-required actions
+### 8.1 Approval States
 
-These usually require approval:
+Состояния approval:
 
-- customer-facing `send` actions,
-- public `publish` actions,
-- pricing or offer commitments,
-- CRM mutations with business consequences,
-- permission changes (`change_access`),
-- production-impacting `mutate_system` actions,
-- `spend_money` above budget thresholds,
-- regulated or sensitive data export (`export_sensitive`),
-- irreversible `delete` operations.
+- `pending_review`
+- `approved`
+- `rejected`
+- `escalated`
+- `expired`
 
-### Typical allow-with-constraints actions
+Approval‑события должны быть частью trace/event‑потока и храниться в episodes/TraceStore.[web:338][web:351]
 
-These may be allowed with limits:
+### 8.2 Checkpoints
+
+Checkpoints — места, где Runtime обязан остановиться и ждать решения человека:
+
+- customer‑facing `send` и `publish`,
+- high‑impact `mutate_system` (деплой, конфиг‑смена, миграции),
+- `spend_money` выше порогов,
+- `change_access` и другие IAM‑чувствительные операции,
+- `delete` и `export_sensitive` в production контекстах.[web:344][web:347]
+
+### 8.3 Approval Patterns
+
+Паттерны approval:[web:344][web:347]
+
+- **Single approver:** один оператор подтверждает действие (минимум для большинства бизнес‑действий).
+- **Two‑step:** reviewer → maintainer (например, код‑ревью → merge).
+- **PR‑centered:** агент создаёт PR/черновик, люди ревьюят, отдельный gate мержит/публикует.
+- **Timeout & fallback:** при отсутствии ответа до дедлайна действие отменяется или уходит в safe fallback.
+- **Dual control:** для особо высоких рисков требуется два независимых approver’а.
+
+Approval‑требования настраиваются per workflow/department/policy: `approval_required: never | sometimes | always` + условия (action_class, impact, сумма, tenant/workspace).
+
+---
+
+## 9. Governance Outcomes
+
+Каждая policy‑проверка должна возвращать один из стабильных outcomes:[web:342]
+
+- `allow`
+- `allow_with_constraints`
+- `require_approval`
+- `deny`
+- `escalate`
+
+Outcomes должны быть:
+
+- явными,
+- сериализуемыми в TraceStore/episodes,
+- снабжёнными ссылкой на policy/rule id.
+
+### 9.1 allow
+
+Действие разрешено без дополнительных ворот, при текущем autonomy tier и policy.
+
+### 9.2 allow_with_constraints
+
+Действие разрешено, но только с жёсткими лимитами:
+
+- read‑only режим,
+- cost cap,
+- depth limit (например, глубина обхода репозитория),
+- ограниченный набор tools,
+- draft‑only output.[web:342][web:351]
+
+### 9.3 require_approval
+
+Нужен human gate перед dispatch или completion.
+
+Governance обязан фиксировать:
+
+- кто одобрил,
+- при каком policy snapshot,
+- какой был контекст (trace_id, workspace_id, autonomy tier).[web:338][web:340]
+
+### 9.4 deny
+
+Действие блокируется.  
+Denials должны быть:
+
+- явно артикулированы (reason, policy_id),
+- объяснимы,
+- логированы.
+
+### 9.5 escalate
+
+Действие слишком амбивалентно/рискованно для обычного approval‑пути и уходит в повышенный канал (security, compliance, owner).
+
+---
+
+## 10. Approval Matrix
+
+Pith должен иметь матрицу approval, завязанную на action_class и blast radius, реализованную в policy engine.[web:342][web:350]
+
+### 10.1 Typical approval‑required actions
+
+Чаще всего требуют approval:
+
+- customer‑facing `send`,
+- публичный `publish`,
+- pricing/offer commitments,
+- CRM‑мутации с бизнес‑последствиями,
+- `change_access` и другие IAM‑операции,
+- prod‑impacting `mutate_system`,
+- `spend_money` выше порогов,
+- `export_sensitive` в проде,
+- необратимые `delete` операций.
+
+### 10.2 Typical allow‑with‑constraints actions
+
+Можно разрешать с ограничениями:
 
 - internal drafting,
 - internal analysis,
-- low-risk research,
-- read-only retrieval,
-- creating artifacts in sandboxed spaces.
+- low‑risk research,
+- read‑only retrieval,
+- создание артефактов в sandbox‑пространствах.
 
-The approval matrix should eventually exist as executable policy (policy engine / config), not only as prose.[web:2107][web:2109]
-
----
-
-## 9. Governance Objects
-
-Governance should evaluate several object types:
-
-### 9.1 Workflow
-
-Examples:
-
-- what department flow is permitted,
-- which autonomy tier is allowed,
-- whether budget limits apply,
-- whether additional approvals are required.
-
-### 9.2 Action
-
-Examples:
-
-- whether `send`/`publish`/`delete` is admissible,
-- whether a specific tool can be used now,
-- whether approval is required.
-
-### 9.3 Context Access
-
-Examples:
-
-- whether this agent can read this memory,
-- whether this workspace boundary is enforced,
-- whether sensitive documents can be included.
-
-### 9.4 Output
-
-Examples:
-
-- whether content can be shown externally,
-- whether the artifact contains restricted data,
-- whether a report requires human review.
+Эта матрица должна жить не только в документации, но и в конфиге, откуда её читает Policy Engine.
 
 ---
 
-## 10. Policy Dimensions
+## 11. Governance Objects
 
-Pith policies should eventually cover at least these dimensions:
+Governance‑решения применяются к нескольким типам объектов:
+
+### 11.1 Workflow
+
+- какой департаментный flow разрешён,
+- какой autonomy tier допустим,
+- какие budget‑лимиты применяются,
+- нужны ли дополнительные approvals.
+
+### 11.2 Action
+
+- можно ли выполнить данный `send`/`publish`/`delete`,
+- может ли конкретный tool быть вызван сейчас,
+- нужен ли approval.
+
+### 11.3 Context Access
+
+- может ли агент читать этот memory/artifact,
+- соблюдаются ли workspace‑границы,
+- можно ли включать чувствительные документы в контекст.[web:343][web:349]
+
+### 11.4 Output
+
+- можно ли показать контент внешне,
+- содержит ли артефакт ограниченные данные,
+- требуется ли human‑review перед export/publish.
+
+---
+
+## 12. Policy Dimensions
+
+Со временем Pith‑политики должны покрывать хотя бы такие измерения:[web:342]
 
 - workspace / tenant boundary,
-- role / actor identity,
+- роль / identity субъекта,
 - action class,
 - department,
 - autonomy tier,
@@ -339,17 +401,17 @@ Pith policies should eventually cover at least these dimensions:
 - destination / recipient,
 - reversibility,
 - business criticality,
-- compliance/risk category.
+- compliance / risk категория.
 
-This should become a formal policy vocabulary over time and be enforced by a runtime policy engine.[web:2107][web:2109]
+Из этого должен вырасти формальный policy‑лексикон, который будет исполняться в runtime.
 
 ---
 
-## 11. Governance and Observability
+## 13. Governance & Observability
 
-Governance depends on observability.
+Governance опирается на observability.
 
-Every important governance decision should be traceable through:
+Каждое важное governance‑решение должно быть трассируемо по:
 
 - `trace_id`
 - `tenant_id`
@@ -357,94 +419,99 @@ Every important governance decision should be traceable through:
 - `task_id`
 - `workflow_id`
 - policy outcome (`allow` / `deny` / `require_approval` / `allow_with_constraints` / `escalate`)
-- approval state and approver
+- approval state и approver
 - acting department / agent
 - action class
 - budget state
-- final dispatch result
+- dispatch result (success/fail/rollback).[web:342][web:351]
 
-If a workflow cannot explain why an action was allowed, denied, or escalated, governance is weak.[web:2108][web:2112]
+Если workflow не может объяснить, почему действие было разрешено, заблокировано или эскалировано, governance считается слабым.
 
 ---
 
-## 12. Governance and Evaluation
+## 14. Governance & Evaluation
 
-Governance should also be measured.
+Governance тоже должен измеряться.[web:342][web:345]
 
-Examples of governance evaluation signals:
+Примеры метрик:
 
 - approval frequency,
 - denial rate,
 - policy violation attempts,
 - action class distribution,
 - autonomy tier distribution,
-- high-risk workflow completion rate,
-- false-positive approvals (over‑blocking),
-- false-negative approvals (under‑blocking),
-- operator correction after approval.
+- high‑risk workflow completion rate,
+- false‑positive approvals (over‑blocking),
+- false‑negative approvals (under‑blocking),
+- operator correction после approval.
 
-This matters because governance that is too weak is dangerous, and governance that is too noisy becomes unusable.[web:2106][web:2109]
-
----
-
-## 13. Governance and Agent Company
-
-Because Pith is becoming an Agent Company OS, governance must operate across departments.[web:2108][web:2112]
-
-Examples:
-
-- Sales agents may draft outreach, but sending customer-facing sequences may require approval.
-- Marketing agents may generate campaigns, but publishing externally may require review.
-- Research agents may collect and synthesize information, but external distribution of sensitive reports may be gated.
-- Delivery agents may build artifacts, but production release or external dispatch may require higher trust.
-- Support/Ops agents may resolve low-risk tickets autonomously, but escalations or financial adjustments may require approvals.
-
-Governance must understand business operations, not only technical actions.
+Слишком слабый governance опасен, слишком шумный — непрактичен.
 
 ---
 
-## 14. Minimum v1 Controls
+## 15. Governance & Agent Company
 
-Pith Governance v1 should start with these minimum controls:
+Так как Pith становится Agent Company OS, governance должен работать **междепартаментно**.[web:341][web:342]
 
-1. Action classification.
-2. Autonomy tiers (Tier 0–2 in active use).
-3. Approval-required action list.
-4. Deny-list for prohibited actions.
-5. Allow-with-constraints mode.
+Примеры:
+
+- Sales‑агенты могут draft‑ить outreach, но отправка клиентам требует approval.
+- Marketing‑агенты могут генерить кампании, но внешнее publish требует review.
+- Research‑агенты могут собирать и синтезировать информацию, но sensitive отчёты требуют gating перед external share.
+- Delivery‑агенты могут собирать артефакты, но prod‑release/launch требует повышенного доверия.
+- Support/Ops‑агенты могут автономно закрывать low‑risk тикеты, но эскалации и финансовые корректировки требуют approvals.
+
+Governance должен понимать **бизнес‑операции**, а не только технич. действия.
+
+---
+
+## 16. Minimum v1 Controls
+
+Для Pith Governance v1 достаточно реализовать:
+
+1. Классификацию действий (Action Classes).
+2. Autonomy tiers (Tier 0–2 в активном использовании).
+3. Список approval‑required действий.
+4. Deny‑list для заведомо запрещённых действий.
+5. `allow_with_constraints` режим.
 6. Budget / spend ceilings per workspace/tenant.
-7. Workspace-scoped access control.
-8. Audit logging for all gated actions.
+7. Workspace‑scoped access control (identity + permissions).
+8. Audit logging для всех gated действий.[web:342][web:351]
 
-This is enough to begin safely without pretending to have perfect governance.[web:2107][web:2113]
+Это даёт практичный контур безопасности без иллюзии «идеального governance».
 
 ---
 
-## 15. Out of Scope for v1
+## 17. Out of Scope for v1
 
-Not required immediately:
+Не требуется немедленно:
 
-- full regulatory mapping for every jurisdiction,
+- полный regulatory‑mapping по юрисдикциям,
 - advanced policy DSL,
-- complete formal verification,
-- full adaptive risk engine,
-- universal enterprise IAM integration.
+- формальная верификация политик,
+- адаптивный risk engine,
+- полный enterprise IAM (SCIM/SAML/OAuth) для всех сценариев.
 
-The v1 goal is **practical runtime governance**, not governance maximalism.
+Цель v1 — **practical runtime governance**, а не governance‑maximalism.
 
 ---
 
-## 16. Next Integration Points
+## 18. Next Integration Points
 
-This document should influence:
+Этот документ должен повлиять на:
 
+- `docs/PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`
 - `docs/PITH_OBSERVABILITY_V1.md`
 - `docs/PITH_EVALUATION_V1.md`
 - `docs/PITH_AGENT_COMPANY_V1.md`
-- `PITH_ACTIVE_CONTEXT.md`
+- `docs/PITH_BILLING_V1.md`
 - planner/orchestrator routing logic
 - tool registry contracts
 - execution result schemas
-- future approval queue / operator console
+- approval queue / operator console (CLI/Web/Telegram hooks)
 
-Pith should not increase autonomy, expand monetized workflows, or expose high-impact tools without governance that is explicit, inspectable, and enforceable.[web:2107][web:2108][web:2111]
+Pith не должен увеличивать автономию, расширять монетизируемые workflows или открывать high‑impact tools без governance, которое:
+
+- явно описано,
+- прозрачно для оператора,
+- enforce‑ится в Runtime.[web:342][web:351]

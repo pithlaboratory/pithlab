@@ -1,7 +1,7 @@
 # PITH MASTER PLAN · v5.2
 
 **Single source of truth: architecture, roadmap, guardrails.**  
-**Last updated:** 2026‑05‑14 · **Status:** v5.2 / Runtime‑first baseline + Agent Company framing · **Owner:** Pith Lab
+**Last updated:** 2026‑05‑18 · **Status:** v5.2 / Runtime‑first baseline + Agent Company framing · **Owner:** Pith Lab
 
 ---
 
@@ -39,7 +39,7 @@ Pith — **self‑improving continuity runtime и Agent Company OS** для дл
 **Success criteria:**
 
 - минимальный cognitive load при управлении агентами и моделями (router/config‑driven),
-- предсказуемые расходы на LLM с budget‑guard’ами и трейсами,
+- предсказуемые расходы на LLM с budget‑guard'ами и трейсами,
 - лёгкий онбординг нового окружения (новый репо, проект, стек) через Kernel/Workspace setup.
 
 ---
@@ -62,14 +62,14 @@ Pith — **self‑improving continuity runtime и Agent Company OS** для дл
 
 **Core‑слои реализации:**
 
-| Слой                  | Назначение                            | Ключевые компоненты                                                   |
-|-----------------------|----------------------------------------|------------------------------------------------------------------------|
-| **Interface Layer**   | Пользовательские интерфейсы           | Telegram, CLI, (позже) web dashboard                                  |
-| **Cognition Layer**   | Принятие решений и планирование       | Router, RuntimePlanner, Orchestrator, Policy Engine                   |
-| **Agent Company Layer** | Цифровые департаменты и workflows   | Department registry, Sales/Marketing/Research/Delivery/Ops agents     |
-| **Execution Layer**   | Выполнение действий                   | Tools, MCP servers, shell, внешние API                                |
-| **Memory Layer**      | Контекст и знания                     | MemoryManager, vector store, episodes, profiles                       |
-| **Evolution Layer**   | Самоулучшение                         | Evaluator, FailureMiner, PatchPlanner, PatchGate, RolloutManager, SkillCompiler |
+| Слой                   | Назначение                                | Ключевые компоненты                                                                 |
+|------------------------|-------------------------------------------|--------------------------------------------------------------------------------------|
+| **Interface Layer**    | Пользовательские интерфейсы               | Telegram, CLI, (позже) web dashboard                                                 |
+| **Cognition Layer**    | Принятие решений и планирование           | Router, RuntimePlanner, Orchestrator, Policy Engine                                  |
+| **Agent Company Layer**| Цифровые департаменты и workflows         | Department registry, Sales/Marketing/Research/Delivery/Ops agents                    |
+| **Execution Layer**    | Выполнение действий                       | Tools, MCP servers, shell, внешние API                                               |
+| **Memory Layer**       | Контекст и знания                         | MemoryManager, vector store, episodes, profiles                                      |
+| **Evolution Layer**    | Самоулучшение                             | Evaluator, FailureMiner, PatchPlanner, PatchGate, RolloutManager, SkillCompiler      |
 
 ### 3.2 Главные компоненты v5
 
@@ -114,14 +114,14 @@ Pith — **self‑improving continuity runtime и Agent Company OS** для дл
 
 ### 4.3 Router Modes & Lanes
 
-| Mode           | Назначение                     | Примеры моделей (через lanes)                 |
-|----------------|--------------------------------|-----------------------------------------------|
-| **core**       | Общий reasoning / анализ       | `deepseek/deepseek-v4-flash`                  |
-| **coder**      | Код / репозитории             | `qwen/qwen3-coder-plus`, `moonshot/kimi-k2.6` |
-| **agent**      | Планирование и сложные воркфлоу | `moonshot/kimi-k2.6`                         |
-| **free**       | Бесплатный слой               | `qwen/qwen3-coder:free`, `llama-3.3-70b:free` |
-| **long_context** | Длинные тексты / репо       | `deepseek/deepseek-v4-flash (1M context)`     |
-| **premium**    | High‑stakes ответы            | `anthropic/claude-3.5-sonnet`                 |
+| Mode            | Назначение                         | Примеры моделей (через lanes)                  |
+|-----------------|------------------------------------|------------------------------------------------|
+| **core**        | Общий reasoning / анализ           | `deepseek/deepseek-v4-flash`                   |
+| **coder**       | Код / репозитории                  | `qwen/qwen3-coder-plus`, `moonshot/kimi-k2.6`  |
+| **agent**       | Планирование и сложные воркфлоу    | `moonshot/kimi-k2.6`                           |
+| **free**        | Бесплатный слой                    | `qwen/qwen3-coder:free`, `llama-3.3-70b:free`  |
+| **long_context**| Длинные тексты / репо              | `deepseek/deepseek-v4-flash (1M context)`      |
+| **premium**     | High‑stakes ответы                 | `anthropic/claude-3.5-sonnet`                  |
 
 **Lane‑паттерн:** FAST, CORE, REASONING, EVAL, FREE_FALLBACK, RESERVE (Timeweb).
 
@@ -146,7 +146,7 @@ Pith — **self‑improving continuity runtime и Agent Company OS** для дл
 - DEBUG в `model_registry.load()`: путь файла, top‑level keys, список lanes.
 - Sanity‑check: `[lanes] CORE baseline candidate from chat_default lane: ...`.
 - При ошибках — `KeyError` с перечислением доступных lanes/models.
-- `router_stats.json` — агрегированные метрики по вызовам и fallback’ам.
+- `router_stats.json` — агрегированные метрики по вызовам и fallback'ам.
 
 ---
 
@@ -154,12 +154,12 @@ Pith — **self‑improving continuity runtime и Agent Company OS** для дл
 
 ### 5.1 Базовые агенты
 
-| Агент               | Назначение                                            | Контракт                              |
-|---------------------|--------------------------------------------------------|----------------------------------------|
-| **Tera (Researcher)** | Web‑research, сбор/нормализация внешней информации | `async process_async(query) → str`     |
-| **Plex (Coherence)**  | Проверка связности, critique, clarification/planning | `process(query) → str`                |
-| **Hex (Strategist)**  | Критика, риски, trade‑offs, foresight               | `async process_async(query) → str`     |
-| **Coda (Executor)**   | Patch‑planning, next actions, execution framing     | `process(query) → str`                |
+| Агент              | Назначение                                             | Контракт                         |
+|--------------------|--------------------------------------------------------|----------------------------------|
+| **Tera (Researcher)** | Web‑research, сбор/нормализация внешней информации | `async process_async(query) → str` |
+| **Plex (Coherence)**  | Проверка связности, critique, clarification/planning | `process(query) → str`          |
+| **Hex (Strategist)**  | Критика, риски, trade‑offs, foresight               | `async process_async(query) → str` |
+| **Coda (Executor)**   | Patch‑planning, next actions, execution framing     | `process(query) → str`          |
 
 Агенты оформлены как модульные `AgentSpec` с контрактом и namespace‑политиками:
 
@@ -184,13 +184,13 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 
 ### 5.3 Agent Company Departments (Commercial Workflows)
 
-| Департамент     | Агенты (примеры)                            | Что делают                                                   | Billable outcome                                  |
-|-----------------|---------------------------------------------|--------------------------------------------------------------|---------------------------------------------------|
-| **Sales**       | LeadFinder, Qualifier, Outreach             | Ищут лиды, квалифицируют, пишут касания, ведут pipeline      | Qualified leads, meetings, pipeline runs          |
-| **Marketing**   | ICP Agent, Offer Agent, Copy Agent, Channel Agent, Analytics | Формируют ICP, офферы, контент, каналы, аналитику | Campaign packs, контент, отчёты                   |
-| **Research**    | Market Agent, Competitor Agent, Trend Agent, Source Verifier | Рынки, конкуренты, тренды, факты                            | Research briefs, market maps                      |
-| **Delivery**    | Builder, Reviewer, Doc, Launch Agent        | Собирают артефакты, проверяют качество, пакуют к запуску     | Launch kits, docs, packaged output                |
-| **Support/Ops** | Support, Incident, Billing, Audit Agent     | Поддержка, инциденты, биллинг, аудит                         | SLA, incident reports, billing, governed execution |
+| Департамент   | Агенты (примеры)                                   | Что делают                                                       | Billable outcome                                  |
+|--------------|-----------------------------------------------------|------------------------------------------------------------------|---------------------------------------------------|
+| **Sales**    | LeadFinder, Qualifier, Outreach                     | Ищут лиды, квалифицируют, пишут касания, ведут pipeline          | Qualified leads, meetings, pipeline runs          |
+| **Marketing**| ICP Agent, Offer Agent, Copy Agent, Channel Agent, Analytics | Формируют ICP, офферы, контент, каналы, аналитику       | Campaign packs, контент, отчёты                   |
+| **Research** | Market Agent, Competitor Agent, Trend Agent, Source Verifier | Рынки, конкуренты, тренды, факты                         | Research briefs, market maps                      |
+| **Delivery** | Builder, Reviewer, Doc, Launch Agent                | Собирают артефакты, проверяют качество, пакуют к запуску         | Launch kits, docs, packaged output                |
+| **Support/Ops** | Support, Incident, Billing, Audit Agent          | Поддержка, инциденты, биллинг, аудит                            | SLA, incident reports, billing, governed execution |
 
 ---
 
@@ -198,22 +198,22 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 
 ### 6.1 Типы памяти
 
-| Тип          | Назначение                               | Реализация                 |
-|--------------|------------------------------------------|----------------------------|
-| **Short‑term** | Текущий диалог, локальный контекст     | RAM / session state        |
-| **Episodic** | История запросов/ответов + метрики      | `episodes.db` (SQLite)     |
-| **Semantic** | Факты, docs, repo‑фрагменты             | vector store + файловая система |
-| **Profile**  | Профили пользователей/Workspace         | Profiles в SQLite / JSON   |
+| Тип         | Назначение                               | Реализация                    |
+|-------------|------------------------------------------|-------------------------------|
+| **Short‑term** | Текущий диалог, локальный контекст   | RAM / session state           |
+| **Episodic**   | История запросов/ответов + метрики   | `episodes.db` (SQLite)        |
+| **Semantic**   | Факты, docs, repo‑фрагменты          | vector store + файловая система |
+| **Profile**    | Профили пользователей/Workspace      | Profiles в SQLite / JSON      |
 
 Дополнительно: **Medium‑term** (проектные файлы, чеклисты) в `MEMORY/` + git.
 
 ### 6.2 Memory v2 Features
 
-- **Namespace isolation:** отдельные пространства памяти per agent / per workspace.
-- **HierarchicalSummarizer:** raw turn → session summary → topic/workspace summary.
-- **Forgetting policy:** эпизоды > N дней без ссылок архивируются.
-- **Temporal validity + trust score** в метаданных каждого memory item.
-- Ночной **consolidation loop** (`scripts/nightly_consolidation.py`).
+- Namespace isolation: отдельные пространства памяти per agent / per workspace.
+- HierarchicalSummarizer: raw turn → session summary → topic/workspace summary.
+- Forgetting policy: эпизоды > N дней без ссылок архивируются.
+- Temporal validity + trust score в метаданных каждого memory item.
+- Ночной consolidation loop (`scripts/nightly_consolidation.py`).
 
 ---
 
@@ -252,21 +252,21 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 
 ### 8.2 Метрики
 
-| Категория   | Метрики                                           | Хранение        |
-|-------------|----------------------------------------------------|-----------------|
-| **Quality** | `task_completion_rate`, `human_override_rate`, `quality_score` | `episodes.db` |
-| **System**  | `latency_p50/p95`, `fallback_rate`, `cache_hit_ratio`          | `router_stats.json` |
-| **Economics** | `cost_per_task`, `quality_weighted_cost`, `budget_utilization` | `router_stats.json` |
-| **Governance** | `approval_frequency`, `policy_violation_rate`              | `episodes.db` |
-| **Evolution** | `patch_acceptance_rate`, `rollback_rate`, `skill_growth`    | `episodes.db` |
+| Категория    | Метрики                                             | Хранение         |
+|--------------|-----------------------------------------------------|------------------|
+| **Quality**  | `task_completion_rate`, `human_override_rate`, `quality_score` | `episodes.db` |
+| **System**   | `latency_p50/p95`, `fallback_rate`, `cache_hit_ratio`         | `router_stats.json` |
+| **Economics**| `cost_per_task`, `quality_weighted_cost`, `budget_utilization`| `router_stats.json` |
+| **Governance**| `approval_frequency`, `policy_violation_rate`                | `episodes.db`  |
+| **Evolution**| `patch_acceptance_rate`, `rollback_rate`, `skill_growth`      | `episodes.db`  |
 
 ### 8.3 TraceStore & Traces
 
 **TraceStore v1 (task‑level backbone) — уже реализован:**
 
-- `task_traces` таблица в `episodes.db` (одна строка на `task_id`).
-- `TaskService` пишет `task_started` / `task_finished` / `task_failed`.
-- Используется для базовой атрибуции длительности задач и статуса (`ok` / `failed` / `cancelled`).
+- таблица `task_traces` в `episodes.db` (одна строка на `task_id`);
+- `TaskService` пишет `task_started` / `task_finished` / `task_failed`;
+- используется для базовой атрибуции длительности задач и статуса (`ok` / `failed` / `cancelled`).
 
 **Следующие шаги (TraceStore v1.1+):**
 
@@ -278,11 +278,11 @@ Orchestrator вызывает агентов через `asyncio.gather(..., ret
 
 ### 8.4 Blocking Thresholds
 
-| Условие                                   | Действие                                |
-|-------------------------------------------|------------------------------------------|
-| `task_completion_rate < 0.5` 2h подряд    | кандидат на откат патча                  |
-| `cost_spike > 3x baseline` за 1h          | kill switch + алерт                      |
-| `fallback_rate > 30%` за сессию           | принудительный switch на core lane       |
+| Условие                               | Действие                             |
+|---------------------------------------|--------------------------------------|
+| `task_completion_rate < 0.5` 2h подряд| кандидат на откат патча              |
+| `cost_spike > 3x baseline` за 1h      | kill switch + алерт                  |
+| `fallback_rate > 30%` за сессию       | принудительный switch на core lane  |
 
 ---
 
@@ -342,6 +342,63 @@ Detaily по фазам: `docs/PITH_KERNEL.md` (Phase 1–6), `docs/PITH_ACTIVE_
 
 ---
 
+## 11a. Required Platform Layers for Agent Company OS
+
+Чтобы Pith действительно работал как Agent Company OS, базового runtime, memory и trace/eval недостаточно. Нужен полный набор платформенных слоёв, которые задают, кто что может делать, какие действия считаются billable, как жить артефактам и как система выходит наружу.
+
+### Identity & Permissions Layer
+
+- Цель: чётко определить, кто является субъектом системы и какие у него права.
+- Субъекты: пользователь, оператор, агент, департамент, внешняя служба.
+- Scope прав: tenant, workspace, task, artifact, tool, department.
+- Действия: read, write, execute, approve, publish, override, configure.
+- Source of truth: `PITH_GOVERNANCE_V1` + `PITH_RUNTIME_CONTEXT_PROTOCOL_V1`.
+
+### Approval / HITL Layer
+
+- Цель: не допустить «черной коробки» — любая серьёзная операция должна иметь понятный контур human‑in‑the‑loop.
+- Approval states: pending_review, approved, rejected, escalated, expired.
+- Checkpoints: где рантайм обязан остановиться и дождаться решения человека.
+- Override semantics: кто и как может менять `human_override` и принимать решения поверх модели.
+- Source of truth: `PITH_GOVERNANCE_V1` + `PITH_RUNTIME_CONTEXT_PROTOCOL_V1`.
+
+### Billing Event Model
+
+- Цель: определить единицу работы и оплаты и связь с trace/eval.
+- Billable unit taxonomy: per task, per workflow, per artifact, per resolved outcome.
+- Metering: откуда берутся факты (TraceStore, episodes, external logs).
+- Attribution: привязка расходов к tenant/workspace/department.
+- Source of truth: `PITH_OBSERVABILITY_V1` + `PITH_BILLING_V1`.
+
+### Artifact System as First‑Class Layer
+
+- Цель: сделать артефакты полноправными сущностями, а не побочными продуктами диалогов.
+- Artifact types: document, report, patch_bundle, plan, dashboard, dataset, prompt_pack.
+- Lineage: created_by, derived_from, approved_by, published_to.
+- Retention: правила хранения и архивации.
+- Source of truth: `PITH_ARTIFACT_SYSTEM_V1` + `PITH_RUNTIME_CONTEXT_PROTOCOL_V1`.
+
+### Evaluation Ops
+
+- Цель: превратить eval из схемы полей в операционный контур защиты от регрессий.
+- Benchmark corpus: эталонные задачи по департаментам.
+- Regression harness: регулярные прогоны и сравнение с базой.
+- Release gates: минимальные метрики для допуска изменений в прод.
+- Autonomy expansion rules: чёткие условия повышения уровня автономии.
+- Source of truth: `PITH_EVALUATION_V1` + `PITH_EVAL_OPS_V1`.
+
+### Distribution Layer (API, Integrations, Packs)
+
+- Цель: сделать Pith продуктом, а не только внутренним runtime.
+- API & SDK: workspace‑native REST/CLI/SDK поверх Cognition Graph.
+- Integrations: Git, CI/CD, CRM, data warehouses.
+- Vertical packs: пакеты под конкретные кейсы (Engineering Ops, Research, Content Ops).
+- Source of truth: `PITH_DISTRIBUTION_V1` + этот `PITH_MASTER_PLAN`.
+
+Эти шесть слоёв не заменяют текущий runtime‑фокус. Они дополняют его и задают полный контур: кто действует, что делает, какие артефакты создаёт, как это наблюдается, оценивается, оплачивается и выходит наружу как продукт.
+
+---
+
 ## 11. Development Workflow & Checks
 
 - **Smoke‑test:** `python core/cognition/router.py` с `OPENROUTER_KEY=dummy`.
@@ -377,18 +434,18 @@ Detaily по фазам: `docs/PITH_KERNEL.md` (Phase 1–6), `docs/PITH_ACTIVE_
 
 ## 13. Architecture Decision Records (ADR)
 
-1. **Config‑driven routing & UI** — модели, префиксы, loading‑профили меняются без правки кода.
-2. **Provider‑agnostic router** — отсутствие vendor lock‑in.
-3. **Canonical runtime manifest** — по `trace_id` / `runtime_config_version` можно восстановить состояние системы.
-4. **Official memory taxonomy** — Short‑term / Episodic / Semantic / Profile.
-5. **Tool contracts standard** — JSON Schema для инструментов, versioning, validation.
-6. **Blocking eval metrics** — `task_completion_rate < 0.5` и `cost_spike > 3x` блокируют.
-7. **Safe autopatch boundaries** — только `risk=low`, `confidence>=0.8` автоприменяются.
-8. **Ring policy (Canary)** — owner → canary (5%) → full, с rollback по метрикам.
-9. **Unit of versioning** — весь манифест компонента: prompt + tools + memory_policy + model_lane.
-10. **Kill switch path** — единая точка остановки автономных действий с audit log и per‑component freeze.
-11. **Agent Company on top of Runtime** — департаменты и workflows не обходят Core Runtime, TraceStore и PolicyDecision.
-12. **Workspace/Tenant isolation** — `workspace_id` и `tenant_id` first‑class в State Layer, трейсах и биллинге.
+1. Config‑driven routing & UI — модели, префиксы, loading‑профили меняются без правки кода.
+2. Provider‑agnostic router — отсутствие vendor lock‑in.
+3. Canonical runtime manifest — по `trace_id` / `runtime_config_version` можно восстановить состояние системы.
+4. Official memory taxonomy — Short‑term / Episodic / Semantic / Profile.
+5. Tool contracts standard — JSON Schema для инструментов, versioning, validation.
+6. Blocking eval metrics — `task_completion_rate < 0.5` и `cost_spike > 3x` блокируют.
+7. Safe autopatch boundaries — только `risk=low`, `confidence>=0.8` автоприменяются.
+8. Ring policy (Canary) — owner → canary (5%) → full, с rollback по метрикам.
+9. Unit of versioning — весь манифест компонента: prompt + tools + memory_policy + model_lane.
+10. Kill switch path — единая точка остановки автономных действий с audit log и per‑component freeze.
+11. Agent Company on top of Runtime — департаменты и workflows не обходят Core Runtime, TraceStore и PolicyDecision.
+12. Workspace/Tenant isolation — `workspace_id` и `tenant_id` first‑class в State Layer, трейсах и биллинге.
 
 ---
 
@@ -485,16 +542,16 @@ Pith vNext строится вокруг **семи контуров**, рабо
 
 ### 16.4 vNext Phase Map
 
-| vNext Phase           | Focus                               | Main Outcome                                           |
-|-----------------------|--------------------------------------|--------------------------------------------------------|
-| **A. Kernel Hardening** | Добить предсказуемость ядра       | router/planner/memory/task correctness, stable trace  |
-| **B. Workspace OS**   | Workspace как единица работы        | workspace CRUD, artifact/task/workflow schemas, unified runtime |
-| **C. Governance Core**| Объяснимость и управляемость        | RuntimeConfig, policies, dashboard v1, rollback, cost attribution |
-| **D. Agent Company v1** | Первая коммерческая вертикаль     | Sales+Marketing+Research workflows, billable events, operator console |
-| **E. Capability Engine** | Накопление способностей         | SkillRegistry, agent contracts, reusable procedures, mining pipeline |
-| **F. Intelligence Fabric** | Богатый контекст              | RepoIndexer, DocumentIngestor, WebResearch, ContextRetriever |
-| **G. Experience & Modalities** | Зрелая операторская оболочка | rich dashboard, trace explorer, voice, multimodal shell |
-| **H. Governed Autonomy** | Расширение автономии без потери контроля | reviewed L2 actions, policy‑bound semi‑auto execution |
+| vNext Phase         | Focus                               | Main Outcome                                             |
+|---------------------|--------------------------------------|----------------------------------------------------------|
+| **A. Kernel Hardening**   | Добить предсказуемость ядра       | router/planner/memory/task correctness, stable trace     |
+| **B. Workspace OS**       | Workspace как единица работы     | workspace CRUD, artifact/task/workflow schemas, unified runtime |
+| **C. Governance Core**    | Объяснимость и управляемость     | RuntimeConfig, policies, dashboard v1, rollback, cost attribution |
+| **D. Agent Company v1**   | Первая коммерческая вертикаль    | Sales+Marketing+Research workflows, billable events, operator console |
+| **E. Capability Engine**  | Накопление способностей          | SkillRegistry, agent contracts, reusable procedures, mining pipeline |
+| **F. Intelligence Fabric**| Богатый контекст                 | RepoIndexer, DocumentIngestor, WebResearch, ContextRetriever |
+| **G. Experience & Modalities** | Зрелая операторская оболочка | rich dashboard, trace explorer, voice, multimodal shell  |
+| **H. Governed Autonomy**  | Расширение автономии без потери контроля | reviewed L2 actions, policy‑bound semi‑auto execution |
 
 ### 16.5 Guardrails for vNext
 
