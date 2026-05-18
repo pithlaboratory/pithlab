@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=./golden_workflow_schema.json
+
+golden_id: research_competitor_brief_v1
+version: 1
+department: research
+workflow_type: competitor_research_brief
+autonomy_tier: "Tier 2"
+
+entrypoint:
+  runtime_mode: "department_research"
+  task_type: "research_brief"
+  # При желании можно добавить конкретный API/route
+  # route: "POST /v1/runtime/tasks"
+
+inputs:
+  description: >
+    Produce a concise but structured research brief about the company "Acme Analytics"
+    as a competitor in the AI analytics / BI space.
+    Focus on product positioning, target customers, pricing model, and key differentiators.
+  user_query: >
+    "Сделай краткий research brief по Acme Analytics как конкуренту в AI-аналитике:
+     на кого они таргетируются, что продают, чем отличаются, как примерно зарабатывают."
+  initial_context:
+    - type: "note"
+      role: "analyst"
+      content: >
+        We already use Pith as an Agent OS for internal research.
+        Assume the audience is a product/strategy team.
+    - type: "constraint"
+      role: "governance"
+      content: >
+        Do not fabricate exact revenue numbers or customer lists.
+        Use qualitative ranges and be explicit about uncertainty.
+
+expected_properties:
+  high_level_goal: >
+    A 1–2 page research brief that a product/strategy team can use as a starting point
+    to understand Acme Analytics as a competitor.
+  required_sections:
+    - "Overview and positioning"
+    - "Target customers and segments"
+    - "Product and capabilities"
+    - "Pricing / monetization model (approximate)"
+    - "Key differentiators vs typical BI/AI analytics tools"
+    - "Risks / unknowns / open questions"
+  quality_expectations:
+    accuracy: "No obvious hallucinations; conservative where data is uncertain."
+    groundedness: "Facts framed with source-style language ('appears to', 'likely', 'publicly positioned as')."
+    completeness: "Covers at least positioning, customer types, product shape, and monetization."
+    coherence: "Clear structure with headings, short paragraphs, and bullet points where appropriate."
+    usefulness: "Actionable for a strategy discussion; doesn’t just restate a homepage."
+  governance_expectations:
+    policy_safety: "No invented financials; no confidential or unverifiable claims."
+    attribution_style: "No direct URLs needed, but language should reflect uncertainty honestly."
+
+rubric:
+  rubric_version: "research_brief_v1"
+  dimensions:
+    - name: "accuracy"
+      scale: "0.0-1.0"
+      description: "Factual correctness and absence of hallucinations."
+    - name: "completeness"
+      scale: "0.0-1.0"
+      description: "Coverage of required sections and key aspects."
+    - name: "groundedness"
+      scale: "0.0-1.0"
+      description: "How well the brief stays within plausible, caveated statements."
+    - name: "coherence"
+      scale: "0.0-1.0"
+      description: "Logical structure, flow, and readability."
+    - name: "usefulness"
+      scale: "0.0-1.0"
+      description: "Practical value for a product/strategy team."
+
+expected_eval_outcome:
+  task_success: "success"          # from EvaluationRecord v1
+  human_override: "none"           # ideal: minimal or no corrections
+  min_quality_score: 0.8           # aggregated across rubric dimensions
+  policy_violation: false
+  notes: >
+    This golden is intended to be a must-pass case for any change that significantly affects
+    research reasoning, planning, tool usage for web/research, or memory behavior in the research department.
+
+owner:
+  name: "Research Lead"
+  contact: "research-lead@pith.lab"
+  review_cadence: "quarterly"
