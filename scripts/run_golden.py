@@ -8,6 +8,7 @@ from jsonschema import validate
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "eval" / "golden" / "golden_workflow_schema.json"
+OUTPUT_DIR = ROOT / "output" / "eval_runs"
 
 
 def load_schema() -> dict:
@@ -27,7 +28,7 @@ def validate_golden(schema: dict, data: dict) -> None:
 def clean_multiline_text(value):
     if not isinstance(value, str):
         return value
-    return value.strip().strip('"').replace("\\\\n", "\\n").strip()
+    return value.strip().strip('"').replace("\\n", "\n").strip()
 
 
 def build_payload(golden: dict) -> dict:
@@ -78,6 +79,20 @@ def fake_evaluation_record(golden: dict) -> dict:
     }
 
 
+def save_run_artifacts(golden: dict, payload: dict, eval_record: dict, output_path: Path) -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    run_artifact = {
+        "golden_id": golden["golden_id"],
+        "department": golden["department"],
+        "workflow_type": golden["workflow_type"],
+        "autonomy_tier": golden["autonomy_tier"],
+        "payload": payload,
+        "evaluation_record": eval_record,
+    }
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(run_artifact, f, ensure_ascii=False, indent=2)
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python scripts/run_golden.py <path-to-golden-yaml>")
@@ -101,6 +116,11 @@ def main():
     eval_record = fake_evaluation_record(golden)
     print("\n=== EvaluationRecord v1 (stub) ===")
     print(json.dumps(eval_record, ensure_ascii=False, indent=2))
+
+    # save artifacts
+    output_file = OUTPUT_DIR / f"{golden['golden_id']}.json"
+    save_run_artifacts(golden, payload, eval_record, output_file)
+    print(f"\nArtifacts written to: {output_file}")
 
 
 if __name__ == "__main__":
