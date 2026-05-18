@@ -9,6 +9,48 @@
 
 ---
 
+## 2026-05-18
+
+### Telegram interface — env token lookup + eval v1 storage
+
+- Нормализован источник Telegram bot token:
+  - `core/secrets.TG_TOKEN` теперь читается через `require_env("TELEGRAM_BOT_TOKEN", "TG_TOKEN", "TGTOKEN")`.
+  - Рекомендуемый ключ для новых деплоев — `TELEGRAM_BOT_TOKEN`; `TG_TOKEN` и `TGTOKEN` остаются backward-compatible alias'ами.
+  - Документацию/пример `.env` нужно обновить под эту схему.
+
+- Расширен `RuntimePlanner` для трейс‑корреляции:
+  - `RuntimePlanner.plan_and_answer(...)` принимает `trace_id` и пробрасывает его дальше в direct LLM flow.
+  - Telegram interface генерирует `trace_id` на входе, передаёт его в `TaskService`/`RuntimePlanner` и сохраняет в `episodes.metadata` (user + assistant episodes).
+
+- Telegram interface пишет EvaluationRecord v1 в assistant episodes:
+  - `interfaces/telegram_bot.py` после `evaluator.evaluate_response(...)` обогащает eval‑blob полями:
+    - `trace_id`, `workspace_id`, `task_id`,
+    - `cost_per_workflow`,
+    - `runtime_mode`, `task_type`, `workflow_type`,
+    - `failure_class` (если задано).
+  - В `episodes.metadata.eval` теперь сохраняется полный `EvaluationRecord v1`:
+    `task_success`, `human_override`, `quality_score`, `eval_source`, `eval_version`,
+    `rubric_version`, `cost_per_workflow`, `policy_violation`, `failure_class`,
+    `workflow_type`, `runtime_mode`, `trace_id`, `workspace_id`, `tokens`, `cost`, `scores`.
+
+- Smoke test (Telegram, user_id=191175045):
+  - Для свежего диалога `user: "салют smoke" / assistant: "Салют. Слышу. Чем помогу?" / user: "test eval v1"` в `episodes.db` появились:
+    - user episode с `metadata.task_id` и `metadata.trace_id`,
+    - assistant episode с `metadata.eval.eval_version = "evaluation_v1"` и всеми полями EvaluationRecord v1.
+  - Проверено через прямой SQLite‑запрос с `ORDER BY rowid DESC` и фильтрацией по `user_id`.
+
+- Backward compat:
+  - Исторические assistant episodes до 2026‑05‑18 могут содержать старый eval‑формат (без `task_success` и `eval_version`).
+  - Backward migration не выполнялась; для фильтрации актуальных records использовать:
+    `json_extract(metadata, '$.eval.eval_version') = 'evaluation_v1'`.
+
+- Risk: Low — изменения additive:
+  - env‑lookup расширен через fallback,
+  - schema `episodes.db` не менялась,
+  - EvaluationRecord v1 совместим с уже существующими eval‑blob'ами (добавляются поля, не удаляются).
+
+---
+
 ## 2026-05-14
 
 ### EvaluationRecord v1 — end-to-end traceable evaluation contract
