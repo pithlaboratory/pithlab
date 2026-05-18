@@ -20,7 +20,7 @@ It must cover:
 - regression over time,
 - department-level business outcomes.
 
-This document exists because a system that “runs” is not necessarily a system that works well.
+This document exists because a system that "runs" is not necessarily a system that works well.
 
 Evaluation is a **first‑class runtime concern** and is built on top of observability traces and events, not as a separate analytics afterthought.
 
@@ -550,7 +550,7 @@ A small set of **golden workflows** should be kept as canaries and run regularly
 
 Evaluation is one of the foundations of governed evolution.
 
-Pith should not “learn” or expand autonomy based only on intuition.
+Pith should not "learn" or expand autonomy based only on intuition.
 It should use evaluation evidence such as:
 
 - quality improvement over time,
@@ -605,6 +605,19 @@ Do not overbuild a perfect evaluation platform before the runtime emits stable t
 
 ---
 
+## 14a. Eval Ops v1 Implementation (Runtime)
+
+На момент v5.2 базовый eval-цикл реализован в виде golden-наборов и smoke gate:
+
+- Golden workflows лежат в `eval/golden/*.yaml` и валидируются схемой `eval/golden/golden_workflow_schema.json`.
+- Каждый golden прогоняется через `scripts/run_golden.py`, который формирует runtime-пейлоад и `EvaluationRecord v1`, сохраняемый в артефакты под `output/eval_runs/*.json`.
+- Скрипт `scripts/eval_smoke_summary.py` агрегирует результаты и применяет простые правила: `task_success == "success"`, `policy_violation == False`, `quality_score ≥ threshold`.
+- Таргет `make eval-smoke-gate` (`eval-smoke` + `eval-smoke-summary`) является текущим минимальным quality gate перед изменениями runtime и интерфейсов.
+
+Eval Ops v1 специально начинается с небольшой, но операциональной поверхности, которая может эволюционировать в более полный EvaluationRun/RegressionRun-пайплайн.
+
+---
+
 ## 15. Out of Scope for v1
 
 Not required immediately:
@@ -640,6 +653,6 @@ Pith should not scale autonomy, monetization, or department complexity without a
 
 **Pith Lab · Москва · 2026**
 
-*Версия v1.1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
+*Версия v1.1.2 · Май 2026 · CONFIDENTIAL / INTERNAL*
 
 </div>

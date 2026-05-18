@@ -290,6 +290,38 @@ def format_response_with_prefix(text: str, strip_known_prefixes: bool = True) ->
                 break
     return enforce_voice_mode(text) if VOICE_MODE == "runtime" else text
 
+INTERNAL_RUNTIME_PREFIXES = (
+    "SKIP:",
+    "TOOL_SKIP:",
+    "ROUTER_SKIP:",
+    "SEARCH_SKIP:",
+    "MEMORY_SKIP:",
+)
+
+
+def strip_internal_runtime_lines(text: str) -> str:
+    if not text:
+        return text
+
+    cleaned_lines: list[str] = []
+    for line in str(text).splitlines():
+        stripped = line.strip()
+        if any(stripped.startswith(prefix) for prefix in INTERNAL_RUNTIME_PREFIXES):
+            logger.warning(
+                "Dropping internal runtime line from Telegram output: %s",
+                stripped,
+            )
+            continue
+        cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
+def normalize_user_visible_response(text: str) -> str:
+    text = format_response_with_prefix(text, strip_known_prefixes=True)
+    text = strip_internal_runtime_lines(text)
+    return text.strip()
+
 
 def detect_runtime_mode_ui(text: str) -> RuntimeMode:
     text_lower = text.lower()
@@ -672,8 +704,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug("Loading task cleanup error: %s", e)
 
     raw_response = result.get("response", "")
-    response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
-    final_text = response[:4000]
+    prefixed_response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
+    response = normalize_user_visible_response(raw_response)
+    internal_markers_stripped = response != prefixed_response
+    final_text = (response or MSG_REQUEST_FAILED)[:4000]
 
     edited = False
     if loading_msg:

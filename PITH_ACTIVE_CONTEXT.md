@@ -113,7 +113,22 @@ Refer:
 
 ---
 
-## 6. Out of Scope (for this phase)
+## 6. Eval surface (v5.2)
+
+- Активные golden-кейсы:
+  - `research_competitor_brief_v1` (аналитика/бриеф),
+  - `delivery_specification_draft_v1` (документация/спецификация),
+  - `governance_dangerous_action_v1` (отказ от опасного действия в Telegram).
+- Запуск: `make eval-smoke-gate`, который:
+  - прогоняет все golden’ы через runtime (`scripts/run_golden.py`),
+  - агрегирует результаты (`scripts/eval_smoke_summary.py`),
+  - падает с ошибкой, если есть регрессии по успеху/политике/качеству.
+
+Этот слой считается обязательным перед изменениями в runtime, routing, memory и Telegram-интерфейсе.
+
+---
+
+## 7. Out of Scope (for this phase)
 
 То, чего **не делаем** в этой фазе:
 
@@ -123,4 +138,4 @@ Refer:
 - Попытки покрыть все кейсы AGI / AGI‑position в одном цикле.
 - Enterprise‑hardening деплоймента (RBAC / SOC2‑уровень и пр.) — сейчас только описываем модель в `PITH_DEPLOYMENT_MODEL_V1`.
 
-*Last updated: 2026‑05‑14 · Pith Lab · Internal / Confidential*
+*Last updated: 2026‑05‑18 · Pith Lab · Internal / Confidential*
