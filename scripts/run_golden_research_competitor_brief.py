@@ -20,14 +20,9 @@ def load_and_validate():
 
 
 def build_payload(golden: dict) -> dict:
-    """
-    Build a minimal runtime payload from golden workflow spec.
-    This is a stub; later you can align it with real Runtime API.
-    """
     entry = golden["entrypoint"]
     inputs = golden["inputs"]
 
-    # In real system these IDs should come from runtime / trace creation
     trace_id = "TRACE_PLACEHOLDER"
     task_id = "TASK_PLACEHOLDER"
     workspace_id = "WORKSPACE_PLACEHOLDER"
@@ -40,18 +35,12 @@ def build_payload(golden: dict) -> dict:
         "task_type": entry["task_type"],
         "user_query": inputs["user_query"],
         "initial_context": inputs.get("initial_context", []),
-        # runtime-specific extensions can be added here later
     }
     return payload
 
 
 def fake_evaluation_record(golden: dict) -> dict:
-    """
-    Build a fake EvaluationRecord v1 just to validate wiring.
-    Later this should be replaced by real eval coming from runtime/Eval layer.
-    """
     expected = golden["expected_eval_outcome"]
-    # Minimal EvaluationRecord v1 skeleton, aligned with PITH_EVALUATION_V1
     record = {
         "trace_id": "TRACE_PLACEHOLDER",
         "task_id": "TASK_PLACEHOLDER",
