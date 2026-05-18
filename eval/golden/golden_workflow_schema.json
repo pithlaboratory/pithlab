@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./golden_workflow_schema.json",
+  "title": "Pith Golden Workflow",
+  "description": "Schema for golden workflow evaluation cases in Pith eval suite.",
+  "type": "object",
+  "required": [
+    "golden_id",
+    "version",
+    "department",
+    "workflow_type",
+    "autonomy_tier",
+    "entrypoint",
+    "inputs",
+    "expected_properties",
+    "rubric",
+    "expected_eval_outcome",
+    "owner"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "golden_id": {
+      "type": "string",
+      "description": "Unique stable identifier for this golden workflow case."
+    },
+    "version": {
+      "type": ["integer", "number"],
+      "description": "Schema version of this golden file."
+    },
+    "department": {
+      "type": "string",
+      "description": "Agent Company department this workflow belongs to (e.g. research, sales, marketing)."
+    },
+    "workflow_type": {
+      "type": "string",
+      "description": "Logical workflow type label (e.g. competitor_brief, lead_qualification)."
+    },
+    "autonomy_tier": {
+      "type": "string",
+      "description": "Expected autonomy tier at execution time (e.g. tier_0, tier_1, tier_2)."
+    },
+    "entrypoint": {
+      "type": "object",
+      "description": "Runtime entrypoint configuration for this workflow.",
+      "required": ["runtime_mode", "task_type"],
+      "additionalProperties": false,
+      "properties": {
+        "runtime_mode": {
+          "type": "string",
+          "description": "Runtime mode at entrypoint (e.g. NORMAL, DIAGNOSTICS, VISION)."
+        },
+        "task_type": {
+          "type": "string",
+          "description": "Task type label used by RuntimePlanner for routing."
+        },
+        "route": {
+          "type": "string",
+          "description": "Optional explicit route override."
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Inputs provided to the workflow at evaluation time.",
+      "required": ["description", "user_query"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this input represents."
+        },
+        "user_query": {
+          "type": "string",
+          "description": "The raw user query or instruction passed to the runtime."
+        },
+        "initial_context": {
+          "type": "array",
+          "description": "Optional list of context items pre-loaded before execution.",
+          "items": {
+            "type": "object",
+            "required": ["type", "role", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Context item type (e.g. memory_record, artifact, system_note)."
+              },
+              "role": {
+                "type": "string",
+                "description": "Semantic role of this context item in the workflow."
+              },
+              "content": {
+                "type": "string",
+                "description": "Raw content of the context item."
+              }
+            }
+          }
+        }
+      }
+    },
+    "expected_properties": {
+      "type": "object",
+      "description": "Expected structural and qualitative properties of the workflow output.",
+      "required": ["high_level_goal"],
+      "additionalProperties": false,
+      "properties": {
+        "high_level_goal": {
+          "type": "string",
+          "description": "The primary business or cognitive goal this workflow must achieve."
+        },
+        "required_sections": {
+          "type": "array",
+          "description": "List of section labels that must appear in the output artifact.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "quality_expectations": {
+          "type": "object",
+          "description": "Named quality expectations with string descriptions.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "governance_expectations": {
+          "type": "object",
+          "description": "Named governance expectations with string descriptions (e.g. approval gates, autonomy limits).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rubric": {
+      "type": "object",
+      "description": "Evaluation rubric applied to this golden workflow.",
+      "required": ["rubric_version", "dimensions"],
+      "additionalProperties": false,
+      "properties": {
+        "rubric_version": {
+          "type": "string",
+          "description": "Version identifier for the rubric definition."
+        },
+        "dimensions": {
+          "type": "array",
+          "description": "List of evaluation dimensions with scoring guidance.",
+          "items": {
+            "type": "object",
+            "required": ["name", "scale", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Dimension name (e.g. factual_accuracy, completeness, cost_efficiency)."
+              },
+              "scale": {
+                "type": "string",
+                "description": "Scoring scale description (e.g. 1-5, pass/fail, 0.0-1.0)."
+              },
+              "description": {
+                "type": "string",
+                "description": "What this dimension measures and how to score it."
+              }
+            }
+          }
+        }
+      }
+    },
+    "expected_eval_outcome": {
+      "type": "object",
+      "description": "Expected evaluation outcome for a correctly functioning runtime.",
+      "required": ["task_success", "human_override"],
+      "additionalProperties": false,
+      "properties": {
+        "task_success": {
+          "type": "string",
+          "description": "Expected task success state (e.g. success, partial_success, failure)."
+        },
+        "human_override": {
+          "type": "string",
+          "description": "Expected human override disposition (e.g. not_required, required, optional)."
+        },
+        "min_quality_score": {
+          "type": "number",
+          "description": "Minimum acceptable aggregate quality score for this workflow to pass."
+        },
+        "policy_violation": {
+          "type": "boolean",
+          "description": "Whether a policy violation is expected (true only for adversarial cases)."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Free-text notes on evaluation edge cases or reviewer guidance."
+        }
+      }
+    },
+    "owner": {
+      "type": "object",
+      "description": "Ownership and maintenance metadata for this golden case.",
+      "required": ["name", "contact"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the owner or owning team."
+        },
+        "contact": {
+          "type": "string",
+          "description": "Contact reference (e.g. email, Slack handle, GitHub username)."
+        },
+        "review_cadence": {
+          "type": "string",
+          "description": "How often this golden case should be reviewed for drift (e.g. monthly, per-release)."
+        }
+      }
+    }
+  }
+}
