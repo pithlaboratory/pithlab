@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=./golden_workflow_schema.json
+
+golden_id: delivery_specification_draft_v1
+version: 1
+department: delivery
+workflow_type: specification_draft
+autonomy_tier: "Tier 2"
+
+entrypoint:
+  runtime_mode: "department_delivery"
+  task_type: "specification_draft"
+  # route: "POST /v1/runtime/tasks"
+
+inputs:
+  description: >
+    Draft a concise but structured functional specification for a new feature:
+    "Saved Views for Project Dashboard" in a B2B SaaS product.
+    The feature should allow users to save, name, and manage custom dashboard views.
+  user_query: >
+    "Нужно черновое функциональное ТЗ на фичу Saved Views для project dashboard в B2B SaaS:
+     пользователь должен уметь настраивать фильтры/колонки/сортировку,
+     сохранять это как именованный вид, переключаться между видами
+     и управлять (переименовать/удалить/назначить вид по умолчанию)."
+  initial_context:
+    - type: "note"
+      role: "pm"
+      content: >
+        Target users: project managers and team leads in mid-size B2B SaaS customers.
+        Assume there is already an existing dashboard with filters and columns.
+    - type: "constraint"
+      role: "governance"
+      content: >
+        Do not specify exact implementation details for frontend or backend.
+        Focus on behavior, scope, and constraints — not on internal architecture.
+
+expected_properties:
+  high_level_goal: >
+    A functional specification draft that an engineer and a designer can use
+    as a starting point to implement "Saved Views" for the project dashboard.
+  required_sections:
+    - "Context and goals"
+    - "Out of scope"
+    - "User roles and permissions"
+    - "Main user flows"
+    - "States and edge cases"
+    - "Data model / entities (high-level)"
+    - "Non-functional constraints (if any)"
+    - "Open questions"
+  quality_expectations:
+    accuracy: "No invented system behavior; spec stays consistent with the described context."
+    completeness: "Covers core flows: create, edit, select, delete, set default, and permission nuances."
+    clarity: "Uses precise, unambiguous language; avoids vague terms; each behavior testable."
+    structure: "Uses clear headings and subsections; flows are easy to follow step-by-step."
+    usefulness: "Actionable for a delivery team; they can start breaking down tasks from this spec."
+  governance_expectations:
+    policy_safety: "No commitments about SLAs, security guarantees, or pricing; focus on behavior."
+    scope_boundaries: "Explicitly call out out-of-scope items to avoid scope creep."
+
+rubric:
+  rubric_version: "delivery_spec_v1"
+  dimensions:
+    - name: "completeness"
+      scale: "0.0-1.0"
+      description: "Coverage of all required sections and main user flows."
+    - name: "clarity"
+      scale: "0.0-1.0"
+      description: "How unambiguous, testable, and implementation-ready the spec is."
+    - name: "structure"
+      scale: "0.0-1.0"
+      description: "Logical organization into sections and flows."
+    - name: "usefulness"
+      scale: "0.0-1.0"
+      description: "Practical value for engineers and designers."
+    - name: "risk_awareness"
+      scale: "0.0-1.0"
+      description: "How well the spec surfaces risks, edge cases, and open questions."
+
+expected_eval_outcome:
+  task_success: "success"
+  human_override: "minor_correction"   # допускается лёгкая правка, но не полный rewrite
+  min_quality_score: 0.8
+  policy_violation: false
+  notes: >
+    This golden is intended to validate that the Delivery workflows can produce
+    structured, implementation-ready specs without overcommitting on architecture
+    or mixing business/policy promises into technical requirements.
+
+owner:
+  name: "Delivery Lead"
+  contact: "delivery-lead@pith.lab"
+  review_cadence: "quarterly"
