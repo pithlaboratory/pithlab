@@ -60,3 +60,4 @@ test_result.txt
 # Generated / mined knowledge corpus
 skills/mined/
 data/*.db.bak.*
+output/
