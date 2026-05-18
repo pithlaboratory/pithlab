@@ -172,7 +172,7 @@ Examples:
 - `memory_write`
 - `approval_required`
 - `approval_granted`
-- `approval_denied`
+- `approval_rejected`
 - `billable_event_recorded`
 - `workflow_completed`
 - `workflow_failed`
@@ -257,6 +257,24 @@ The minimum runtime trace model should include the following fields. Fields are 
 
 > This is the minimum viable trace vocabulary. It may be extended later, but the system should converge around a stable trace contract early.
 
+### 5.3 Envelope Linkage
+
+Начиная с `PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`, каждый runtime‑шаг должен быть восстанавливаем из комбинации:
+
+- envelope‑снимка (или его части),
+- одного или нескольких trace events.
+
+Для этого trace‑события v1 должны:
+
+- ссылаться на `trace_id`, `task_id`, `workspace_id` из envelope,
+- иметь ссылку на `envelope_version`,
+- для ключевых событий (planner, orchestrator, approvals, billing, artifact) включать **сжатый snapshot** соответствующих блоков envelope:
+  - для governance‑связанных событий — выжимку из `governance` блока,
+  - для artifact‑событий — выжимку из `artifacts` блока,
+  - для billing‑событий — выжимку из `billing` блока.
+
+Цель: Governance/Evaluation/Billing должны уметь восстановить необходимый контекст **без обращения к сторонним системам**, опираясь только на TraceStore + envelope.
+
 ---
 
 ## 6. What Must Be Observable
@@ -319,13 +337,91 @@ For department workflows, observability should include:
 
 - department label,
 - agent role,
-- autonomy level (L0–L3),
+- autonomy level (Tier 0–4),
 - billable event references,
 - business outcome category,
 - human approval checkpoints,
 - artifact production.
 
 This allows cost and quality analysis per department and per vertical.
+
+### 6.6 Governance / Approvals
+
+Для Governance/HITL observability должна фиксировать:
+
+- какие действия требовали approval,
+- каким policy‑решением это было определено,
+- кто и когда дал/отклонил approval,
+- на каком уровне автономии работал агент (Tier 0–4),
+- каким был итоговый approval state для трассы/задачи.
+
+Минимальный набор событий:
+
+- `approval_required` — система определила, что шаг требует review,
+- `approval_requested` — запрос отправлен reviewer’у,
+- `approval_granted` — approval дан,
+- `approval_rejected` — отказ,
+- `approval_escalated` — эскалация (роль/департамент),
+- `approval_expired` — просрочен SLT/TTL.
+
+Каждое approval‑событие должно включать:
+
+- `trace_id`, `task_id`, `workspace_id`,
+- `policy_id`, `autonomy_tier`, `requested_autonomy_tier`,
+- `action_class`,
+- `approval_state` до/после,
+- `subject` (кто запросил) и `reviewer` (кто принял решение, если применимо),
+- ссылку на соответствующий approval‑checkpoint из runtime‑envelope.
+
+### 6.7 Artifacts
+
+Артефакты — отдельный first‑class слой, и observability должна позволять:
+
+- понять, какие артефакты были созданы/обновлены в рамках трассы,
+- проследить lineage артефактов (из каких задач/артефактов они происходят),
+- оценить качество и использование артефактов в последующих workflows.
+
+Минимальный набор событий:
+
+- `artifact_created`
+- `artifact_updated`
+- `artifact_deleted` (если поддерживается)
+- `artifact_published` (доступен за пределами исходного workspace/department)
+- `artifact_used_as_input` (артефакт включён в контекст другого task/workflow)
+
+Каждое artifact‑событие должно включать:
+
+- `trace_id`, `task_id`, `workspace_id`,
+- `artifact_id`, `artifact_type`, `artifact_role` (draft, reference, published),
+- `lineage` ссылки: `created_from_task_ids`, `derived_from_artifact_ids`,
+- high‑level summary (без больших payload’ов).
+
+События должны быть согласованы с `artifacts` блоком из `PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md` и `PITH_ARTIFACT_SYSTEM_V1` (когда он появится).
+
+### 6.8 Billing
+
+Для cost/monetization observability должна отражать:
+
+- где и почему возникли billable events,
+- как cost накапливается по трассе,
+- какие guardrails/лимиты сработали.
+
+Минимальный набор событий:
+
+- `billing_event_recorded` — зафиксирован billable event (tokens, tool, model, workflow),
+- `billing_limit_hit` — достигнут лимит (task/workspace/tenant),
+- `billing_projection_updated` — обновлён прогнозируемый cost по трассе/задаче,
+- `billing_anomaly_detected` (future) — подозрительная аномалия cost.
+
+Каждое billing‑событие должно включать:
+
+- `trace_id`, `task_id`, `workspace_id`, `tenant_id` (если есть),
+- `billing_unit` (`task|workflow|artifact|outcome`),
+- `billing_context` (department, workflow, plan, tags),
+- `runtime_cost_estimate` (tokens, usd),
+- для `billing_limit_hit` — какое именно ограничение сработало (`task_usd_limit`, `workspace_monthly_usd_limit`, `premium_hops_limit`).
+
+Эти события должны быть консистентны с billing‑блоком из runtime‑envelope и будущим `PITH_BILLING_V1`.
 
 ---
 
@@ -375,6 +471,37 @@ Suggested failure classes:
 
 Each failure should be attached to a trace event with `failure_class`, `error_code`, and `error_summary`.
 A stable failure taxonomy is necessary for postmortems, evaluation, and operational learning.
+
+### 8.1 Event Families
+
+Чтобы упростить анализ и эволюцию observability‑схемы, события v1 группируются в семейства:
+
+- **Core Runtime Events**  
+  `request_received`, `task_created`, `task_started`, `task_finished`, `task_failed`, `workflow_started`, `workflow_completed`, `workflow_failed`.
+
+- **Planner / Orchestrator Events**  
+  `planner_started`, `planner_routed`, `planner_fallback_used`,  
+  `orchestrator_started`, `subtask_dispatched`, `subtask_completed`, `subtask_failed`.
+
+- **Tool / Memory Events**  
+  `tool_invoked`, `tool_completed`, `tool_failed`,  
+  `memory_read`, `memory_write`, `memory_hit`, `memory_miss`.
+
+- **Governance / Approval Events**  
+  `approval_required`, `approval_requested`, `approval_granted`, `approval_rejected`, `approval_escalated`, `approval_expired`,  
+  `policy_decision_applied`, `policy_guardrail_triggered`.
+
+- **Artifact Events**  
+  `artifact_created`, `artifact_updated`, `artifact_deleted`, `artifact_published`, `artifact_used_as_input`.
+
+- **Billing / Cost Events**  
+  `billing_event_recorded`, `billing_limit_hit`, `billing_projection_updated`, `billing_anomaly_detected` (future).
+
+Каждый event family должен использовать общий поднабор полей (envelope linkage + специфические поля), чтобы упростить:
+
+- агрегацию и дашборды,
+- отбор трасс для evaluation,
+- построение регрессий по конкретным классам проблем (например, approvals vs artifacts vs billing).
 
 ---
 
@@ -460,6 +587,6 @@ Pith should not expand autonomy or monetized agent workflows without observabili
 
 **Pith Lab · Москва · 2026**
 
-*Версия v1.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
+*Версия v1.2.1 · Май 2026 · CONFIDENTIAL / INTERNAL*
 
 </div>
