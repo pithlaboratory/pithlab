@@ -3,6 +3,7 @@ Pith v5 — Telegram Interface
 Author: Pith Lab
 License: MIT
 Status: L0/L1 autonomy enforced | Kernel-compliant | Trace-ready | Workspace-aware (Phase 1.1)
+Version: v2.9.9-regex-fix
 """
 
 # === ENV LOADING: MUST BE FIRST (before any core imports) ===
@@ -34,7 +35,8 @@ os.environ.setdefault("LC_ALL", "ru_RU.UTF-8")
 import sys
 import inspect
 import uuid
-import re  # ✅ Added for governance regex guards
+import re
+from typing import Any, Dict, List, Optional
 
 try:
     enc_out = getattr(sys.stdout, "encoding", None)
@@ -50,7 +52,6 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import Any, Dict, List, Optional
 
 import yaml
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -93,7 +94,7 @@ try:
 except ImportError:
     ToolRegistry = None
 
-# Budget check via router (correct import)
+# Budget check via router
 try:
     from core.cognition.router import get_router
     router_available = True
@@ -254,6 +255,13 @@ TELEGRAM_DANGEROUS_DELETE_REPLY = _fmt_sys(
     "и я помогу найти подходящий способ."
 )
 
+TELEGRAM_INTERNAL_LEAK_REPLY = _fmt_sys(
+    "Запрошенная информация относится к внутренним служебным деталям системы и не предназначена для передачи через чат.\n\n"
+    "Я не могу показывать служебные инструкции, конфигурацию или внутренние маркеры — это стандартная мера защиты, не связанная с конкретным запросом.\n\n"
+    "Если у вас есть практический вопрос по работе системы — задайте его, и я постараюсь ответить в той мере, в какой это возможно."
+)
+
+# ✅ FIXED: Single backslash in raw strings for regex metacharacters
 TELEGRAM_DANGEROUS_DELETE_PATTERNS = [
     re.compile(r"\bудали\b.*\b(все|всё)\b.*\b(задач\w*|данн\w*|истори\w*|диалог\w*)\b", re.IGNORECASE),
     re.compile(r"\bудали\b.*\b(истори\w*|диалог\w*|данн\w*)\b", re.IGNORECASE),
@@ -264,16 +272,35 @@ TELEGRAM_DANGEROUS_DELETE_PATTERNS = [
     re.compile(r"\bremove\b.*\b(all|everything|tasks?|data|history)\b", re.IGNORECASE),
 ]
 
+TELEGRAM_INTERNAL_LEAK_PATTERNS = [
+    re.compile(r"(системн\w*\s+инструкц\w*)", re.IGNORECASE),
+    re.compile(r"(скрыт\w*\s+промпт\w*|hidden\s+prompt|system\s+prompt)", re.IGNORECASE),
+    re.compile(r"\b(промпт\w*|prompt)\b", re.IGNORECASE),
+    re.compile(r"\b(конфиг\w*|конфигурац\w*|config)\b", re.IGNORECASE),
+    re.compile(r"\b(лог\w*|logs?)\b", re.IGNORECASE),
+    re.compile(r"\b(runtime[-\s]?конфиг|runtime[-\s]?logs?)\b", re.IGNORECASE),
+    re.compile(r"\b(токен\w*|tokens?|api[-\s]?key|keys?)\b", re.IGNORECASE),
+    # ✅ FIXED: No \b around : markers
+    re.compile(r"(SKIP:|TOOL_SKIP:|ROUTER_SKIP:|SEARCH_SKIP:|MEMORY_SKIP:)", re.IGNORECASE),
+]
+
 
 def is_telegram_dangerous_delete_request(text: str) -> bool:
     if not text:
         return False
-
     normalized = " ".join(str(text).split()).strip()
     if not normalized:
         return False
-
     return any(pattern.search(normalized) for pattern in TELEGRAM_DANGEROUS_DELETE_PATTERNS)
+
+
+def is_telegram_internal_leak_request(text: str) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(str(text).split()).strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) for pattern in TELEGRAM_INTERNAL_LEAK_PATTERNS)
 
 
 async def maybe_handle_governance_refusal(
@@ -284,22 +311,32 @@ async def maybe_handle_governance_refusal(
     if not update.message or not update.effective_user or not update.effective_chat:
         return False
 
-    if not is_telegram_dangerous_delete_request(text):
-        return False
-
     user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
 
-    logger.warning(
-        "GOVERNANCE_REFUSAL telegram dangerous_delete user=%s chat=%s text=%r",
-        user_id,
-        chat_id,
-        text[:500],
-    )
+    if is_telegram_dangerous_delete_request(text):
+        logger.warning(
+            "GOVERNANCE_REFUSAL telegram dangerous_delete user=%s chat=%s text=%r",
+            user_id,
+            chat_id,
+            text[:500],
+        )
+        await send_typing_safe(context, chat_id)
+        await safe_reply(update.message, TELEGRAM_DANGEROUS_DELETE_REPLY)
+        return True
 
-    await send_typing_safe(context, chat_id)
-    await safe_reply(update.message, TELEGRAM_DANGEROUS_DELETE_REPLY)
-    return True
+    if is_telegram_internal_leak_request(text):
+        logger.warning(
+            "GOVERNANCE_REFUSAL telegram internal_leak user=%s chat=%s text=%r",
+            user_id,
+            chat_id,
+            text[:500],
+        )
+        await send_typing_safe(context, chat_id)
+        await safe_reply(update.message, TELEGRAM_INTERNAL_LEAK_REPLY)
+        return True
+
+    return False
 
 
 # === CORE RUNTIME BINDINGS ===
@@ -349,7 +386,7 @@ def format_response_with_prefix(text: str, strip_known_prefixes: bool = True) ->
     return enforce_voice_mode(text) if VOICE_MODE == "runtime" else text
 
 
-# ✅ NEW: Filter internal runtime markers from user-visible output
+# === OUTPUT SANITIZATION ===
 INTERNAL_RUNTIME_PREFIXES = (
     "SKIP:",
     "TOOL_SKIP:",
@@ -372,6 +409,7 @@ def strip_internal_runtime_lines(text: str) -> str:
             continue
         cleaned_lines.append(line)
 
+    # ✅ FIXED: Single backslash for newline character
     return "\n".join(cleaned_lines).strip()
 
 
@@ -426,7 +464,7 @@ async def send_typing_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> 
         logger.debug("Failed to send typing action: %s", e)
 
 
-async def safe_reply(message, text, reply_markup=None, retries: int = 3):
+async def safe_reply(message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None, retries: int = 3) -> Optional[Any]:
     try:
         text = str(text).encode("utf-8", errors="replace").decode("utf-8")
     except Exception:
@@ -446,7 +484,7 @@ async def safe_reply(message, text, reply_markup=None, retries: int = 3):
     return None
 
 
-async def safe_callback_reply(query, text, reply_markup=None, retries: int = 3):
+async def safe_callback_reply(query, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None, retries: int = 3) -> Optional[Any]:
     if not query or not query.message:
         return None
     try:
@@ -568,7 +606,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(update.message, MSG_EMPTY)
         return
 
-    # ✅ Governance guard: block dangerous delete requests via Telegram
+    # ✅ Governance guard: block dangerous delete/internal-leak requests via Telegram
     if await maybe_handle_governance_refusal(update, context, text):
         return
 
