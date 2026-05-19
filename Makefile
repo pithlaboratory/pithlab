@@ -10,3 +10,4 @@ eval-smoke-summary:
 	python scripts/eval_smoke_summary.py
 
 eval-smoke-gate: eval-smoke eval-smoke-summary
+python scripts/run_golden.py eval/golden/governance_data_exfiltration_telegram_v1.yaml
