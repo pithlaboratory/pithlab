@@ -3,7 +3,7 @@ Pith v5 — Telegram Interface
 Author: Pith Lab
 License: MIT
 Status: L0/L1 autonomy enforced | Kernel-compliant | Trace-ready | Workspace-aware (Phase 1.1)
-Version: v2.9.9-regex-fix
+Version: v2.9.12-governance-traced
 """
 
 # === ENV LOADING: MUST BE FIRST (before any core imports) ===
@@ -261,6 +261,20 @@ TELEGRAM_INTERNAL_LEAK_REPLY = _fmt_sys(
     "Если у вас есть практический вопрос по работе системы — задайте его, и я постараюсь ответить в той мере, в какой это возможно."
 )
 
+# ✅ NEW: Data exfiltration refusal
+TELEGRAM_DATA_EXFILTRATION_REPLY = _fmt_sys(
+    "Я не могу отправлять данные workspace во внешние каналы или на сторонние endpoint'ы через Telegram.\n\n"
+    "Такие действия считаются операциями повышенного риска и требуют отдельного разрешения и безопасного канала выполнения.\n\n"
+    "Никакие данные никуда не были отправлены. Если нужно, я могу помочь подготовить безопасный внутренний результат или оформить данные для ручной передачи."
+)
+
+# ✅ NEW: Workspace isolation refusal
+TELEGRAM_WORKSPACE_ISOLATION_REPLY = _fmt_sys(
+    "Я не могу выдавать задачи, артефакты или другие данные из чужого workspace.\n\n"
+    "Доступ к данным ограничен границами текущего workspace, и я не раскрываю сведения о чужих workspace через чат.\n\n"
+    "Если вам нужен доступ по рабочему процессу, это должно оформляться через предусмотренный механизм доступа, а не через запрос в Telegram."
+)
+
 # ✅ FIXED: Single backslash in raw strings for regex metacharacters
 TELEGRAM_DANGEROUS_DELETE_PATTERNS = [
     re.compile(r"\bудали\b.*\b(все|всё)\b.*\b(задач\w*|данн\w*|истори\w*|диалог\w*)\b", re.IGNORECASE),
@@ -284,6 +298,21 @@ TELEGRAM_INTERNAL_LEAK_PATTERNS = [
     re.compile(r"(SKIP:|TOOL_SKIP:|ROUTER_SKIP:|SEARCH_SKIP:|MEMORY_SKIP:)", re.IGNORECASE),
 ]
 
+# ✅ NEW: Data exfiltration patterns
+TELEGRAM_DATA_EXFILTRATION_PATTERNS = [
+    re.compile(r"\b(отправь|перешли|выгрузи|экспортируй|upload|send|forward|post)\b.*\b(webhook|endpoint|url|hook|server|api)\b", re.IGNORECASE),
+    re.compile(r"\b(webhook|hooks?\.[^\s]+|https?://[^\s]+)\b", re.IGNORECASE),
+    re.compile(r"\b(отправь|перешли|send|forward)\b.*\b(задач\w*|артефакт\w*|данн\w*|workspace)\b", re.IGNORECASE),
+]
+
+# ✅ NEW: Workspace isolation patterns
+TELEGRAM_WORKSPACE_ISOLATION_PATTERNS = [
+    re.compile(r"\bworkspace\b.*\b(коллег\w*|чуж\w*|друг\w*)\b", re.IGNORECASE),
+    re.compile(r"\b(покажи|дай|открой|выведи|get|show)\b.*\b(задач\w*|артефакт\w*|данн\w*)\b.*\bworkspace\b", re.IGNORECASE),
+    re.compile(r"\bws_[a-z0-9_]+\b", re.IGNORECASE),
+    re.compile(r"\bworkspace[_\s-]?id\b", re.IGNORECASE),
+]
+
 
 def is_telegram_dangerous_delete_request(text: str) -> bool:
     if not text:
@@ -303,18 +332,68 @@ def is_telegram_internal_leak_request(text: str) -> bool:
     return any(pattern.search(normalized) for pattern in TELEGRAM_INTERNAL_LEAK_PATTERNS)
 
 
+# ✅ NEW: Data exfiltration detector
+def is_telegram_data_exfiltration_request(text: str) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(str(text).split()).strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) for pattern in TELEGRAM_DATA_EXFILTRATION_PATTERNS)
+
+
+# ✅ NEW: Workspace isolation detector
+def is_telegram_workspace_isolation_request(text: str) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(str(text).split()).strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) for pattern in TELEGRAM_WORKSPACE_ISOLATION_PATTERNS)
+
+
+# ✅ UPDATED: Added trace_service_instance parameter
 async def maybe_handle_governance_refusal(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     text: str,
+    trace_service_instance=None,
 ) -> bool:
     if not update.message or not update.effective_user or not update.effective_chat:
         return False
 
     user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
+    
+    # ✅ Generate trace_id and workspace_id for governance events
+    trace_id = str(uuid.uuid4())
+    workspace_id = get_default_workspace_id_for_user(user_id)
 
     if is_telegram_dangerous_delete_request(text):
+        # ✅ Governance observability: record refusal in TraceService
+        if trace_service_instance is not None:
+            try:
+                trace_service_instance.record(
+                    task_id="gov_refusal",
+                    workspace_id=workspace_id,
+                    semantic="Telegram governance refusal: dangerous_delete",
+                    raw={
+                        "trace_id": trace_id,
+                        "channel": "telegram",
+                        "workflow_type": "governance_guard",
+                        "task_type": "governance_refusal",
+                        "autonomy_tier": "L0/L1",
+                        "policy_violation": False,
+                        "refusal_reason": "dangerous_delete_via_telegram",
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "input_preview": text[:200],
+                    },
+                    event_type="governance_refusal",
+                )
+            except Exception as e:
+                logger.debug("TraceService governance_refusal (dangerous_delete) skipped: %s", e)
+
         logger.warning(
             "GOVERNANCE_REFUSAL telegram dangerous_delete user=%s chat=%s text=%r",
             user_id,
@@ -326,6 +405,30 @@ async def maybe_handle_governance_refusal(
         return True
 
     if is_telegram_internal_leak_request(text):
+        # ✅ Governance observability: record refusal in TraceService
+        if trace_service_instance is not None:
+            try:
+                trace_service_instance.record(
+                    task_id="gov_refusal",
+                    workspace_id=workspace_id,
+                    semantic="Telegram governance refusal: internal_leak",
+                    raw={
+                        "trace_id": trace_id,
+                        "channel": "telegram",
+                        "workflow_type": "governance_guard",
+                        "task_type": "governance_refusal",
+                        "autonomy_tier": "L0/L1",
+                        "policy_violation": False,
+                        "refusal_reason": "internal_leak_via_telegram",
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "input_preview": text[:200],
+                    },
+                    event_type="governance_refusal",
+                )
+            except Exception as e:
+                logger.debug("TraceService governance_refusal (internal_leak) skipped: %s", e)
+
         logger.warning(
             "GOVERNANCE_REFUSAL telegram internal_leak user=%s chat=%s text=%r",
             user_id,
@@ -334,6 +437,78 @@ async def maybe_handle_governance_refusal(
         )
         await send_typing_safe(context, chat_id)
         await safe_reply(update.message, TELEGRAM_INTERNAL_LEAK_REPLY)
+        return True
+
+    # ✅ NEW: Data exfiltration guard
+    if is_telegram_data_exfiltration_request(text):
+        # ✅ Governance observability: record refusal in TraceService
+        if trace_service_instance is not None:
+            try:
+                trace_service_instance.record(
+                    task_id="gov_refusal",
+                    workspace_id=workspace_id,
+                    semantic="Telegram governance refusal: data_exfiltration",
+                    raw={
+                        "trace_id": trace_id,
+                        "channel": "telegram",
+                        "workflow_type": "governance_guard",
+                        "task_type": "governance_refusal",
+                        "autonomy_tier": "L0/L1",
+                        "policy_violation": False,
+                        "refusal_reason": "data_exfiltration_via_telegram",
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "input_preview": text[:200],
+                    },
+                    event_type="governance_refusal",
+                )
+            except Exception as e:
+                logger.debug("TraceService governance_refusal (data_exfiltration) skipped: %s", e)
+
+        logger.warning(
+            "GOVERNANCE_REFUSAL telegram data_exfiltration user=%s chat=%s text=%r",
+            user_id,
+            chat_id,
+            text[:500],
+        )
+        await send_typing_safe(context, chat_id)
+        await safe_reply(update.message, TELEGRAM_DATA_EXFILTRATION_REPLY)
+        return True
+
+    # ✅ NEW: Workspace isolation guard
+    if is_telegram_workspace_isolation_request(text):
+        # ✅ Governance observability: record refusal in TraceService
+        if trace_service_instance is not None:
+            try:
+                trace_service_instance.record(
+                    task_id="gov_refusal",
+                    workspace_id=workspace_id,
+                    semantic="Telegram governance refusal: workspace_isolation",
+                    raw={
+                        "trace_id": trace_id,
+                        "channel": "telegram",
+                        "workflow_type": "governance_guard",
+                        "task_type": "governance_refusal",
+                        "autonomy_tier": "L0/L1",
+                        "policy_violation": False,
+                        "refusal_reason": "workspace_isolation_via_telegram",
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "input_preview": text[:200],
+                    },
+                    event_type="governance_refusal",
+                )
+            except Exception as e:
+                logger.debug("TraceService governance_refusal (workspace_isolation) skipped: %s", e)
+
+        logger.warning(
+            "GOVERNANCE_REFUSAL telegram workspace_isolation user=%s chat=%s text=%r",
+            user_id,
+            chat_id,
+            text[:500],
+        )
+        await send_typing_safe(context, chat_id)
+        await safe_reply(update.message, TELEGRAM_WORKSPACE_ISOLATION_REPLY)
         return True
 
     return False
@@ -606,8 +781,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(update.message, MSG_EMPTY)
         return
 
-    # ✅ Governance guard: block dangerous delete/internal-leak requests via Telegram
-    if await maybe_handle_governance_refusal(update, context, text):
+    # ✅ UPDATED: Pass trace_service to governance guard
+    if await maybe_handle_governance_refusal(
+        update,
+        context,
+        text,
+        trace_service_instance=trace_service,
+    ):
         return
 
     if len(text) > MAX_INPUT_CHARS:
