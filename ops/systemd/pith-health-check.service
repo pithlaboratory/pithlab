@@ -1,0 +1,7 @@
+[Unit]
+Description=Pith health check
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/root/pith_v5/.env
+ExecStart=/usr/local/bin/pith-health-check.sh
