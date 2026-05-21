@@ -80,6 +80,20 @@
 - **Docs:** `PITH_DEV_CONTEXT.md`, `docs/PITH_MASTER_PLAN.md`
 - **Commit:** `docs: add PITH_DEV_CONTEXT.md — дев-гайд с правилами безопасного добавления фич`
 
+### [docs] Update PITH_ACTIVE_CONTEXT for v5.4 runtime + Support/Ops Desk
+
+- Обновлён `PITH_ACTIVE_CONTEXT.md` под `PITH_MASTER_PLAN v5.4`:
+  - зафиксирована текущая фаза: Runtime stabilization + Observability/Eval v1 + Support/Ops Desk wedge;
+  - добавлен snapshot канонических доков (PITH_MASTER_PLAN v5.4, PITH_DEV_CONTEXT, PITH_CHANGELOG);
+  - обновлён список active priorities (runtime/tracing, Support/Ops Desk, eval/governance, docs);
+  - явно перечислены short-term next steps и out-of-scope для текущей фазы.
+- Старый фокус на Agent Company v1 (Sales/Marketing/Research) вынесен в исторический контекст через master plan, но больше не считается активным контекстом.
+
+- **Risk:** None — документация только.
+- **Rollback:** Вернуть предыдущую версию `PITH_ACTIVE_CONTEXT.md` из git.
+- **Docs:** `PITH_ACTIVE_CONTEXT.md`, `docs/PITH_MASTER_PLAN.md`, `PITH_DEV_CONTEXT.md`
+- **Commit:** `docs: align PITH_ACTIVE_CONTEXT with PITH_MASTER_PLAN v5.4`
+
 ### [config] config.yaml v5.0.1-clean-grounded
 
 - Обновлён `config.yaml`:
