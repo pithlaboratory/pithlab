@@ -1,12 +1,18 @@
 # Pith Agent Company v1 — Architecture Blueprint
 
-> Pith v5 as Agent Company OS: управляемая многоагентная фирма поверх Pith Runtime.
+> Status: VISION / vNext · Not an active v5.4 implementation plan  
+> Aligned with: `docs/PITH_MASTER_PLAN.md` §§1, 19, 26–27  
+> Note: This document describes a future Agent Company OS layer over Pith Runtime.  
+> The current external product focus for v5.x is Support/Ops Desk;  
+> multi-department "Agent Company" scenarios come **after** that wedge is proven.
+
+> Pith vNext as Agent Company OS: управляемая многоагентная фирма поверх Pith Runtime.
 
 ---
 
 ## 1. Purpose
 
-Pith Agent Company v1 описывает, как Pith v5 используется не как «один ассистент», а как операционная система для цифровой компании из агентов:
+Pith Agent Company v1 описывает не текущий v5.x scope, а целевую форму, как Pith Runtime может использоваться как операционная система для цифровой компании из агентов в vNext горизонте:
 
 - один вход для клиента (Primary Agent);
 - слой оркестрации (Runtime Planner / Orchestrator);
@@ -301,6 +307,8 @@ Action layer — это инструменты и внешние системы,
 
 ## 9. v1 Scope & Limitations
 
+Этот раздел описывает будущий v1 Agent Company слой (после Support/Ops Desk), а не текущий v5.4 приоритет.
+
 Pith Agent Company v1 **не** пытается:
 
 - покрыть все возможные департаменты (финансы, HR, юридический и т.п.);
@@ -332,3 +340,8 @@ Pith Agent Company v1 **не** пытается:
 
 Дальнейшие детали по runtime и API описываются в:  
 `ARCHITECTURE_NORTH_STAR (v2).md`, `PITH_KERNEL.md`, `RUNTIME_CONTEXT_PROTOCOL.md` и runtime‑спецификациях.
+
+---
+
+> Конкретные шаги по runtime, Support/Ops Desk и governance заданы в `docs/PITH_MASTER_PLAN.md` (v5.4).  
+> Этот blueprint используется как архитектурная опора для разделов 26–27 (Pith vNext, Five-Year Capability Map).

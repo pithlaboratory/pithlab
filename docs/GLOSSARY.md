@@ -1,170 +1,168 @@
-# Pith Glossary
-
-Этот глоссарий фиксирует ключевые термины Pith Runtime в одном месте.  
-Цель — чтобы код, доки и обсуждения использовали одни и те же слова.
-
----
-
-## Pith Runtime (Pith v5+)
-
-**Pith Runtime** — это **self‑improving continuity runtime / workspace‑native orchestration runtime** и ядро Agent Company OS для long‑running работы.
+Pith Runtime
+Pith Runtime — self‑improving continuity runtime / workspace‑native orchestration runtime для long‑running когнитивных и операционных задач внутри workspace’ов.
 
 Не:
 
-- чат‑бот,  
-- AGI‑обещание,  
-- “просто память”,  
-- zoo агентов.
+чат‑бот,
+
+AGI‑обещание,
+
+“просто память”,
+
+зоопарк агентов.
 
 А:
 
-- runtime‑слой, который связывает задачи, контекст, память, навыки, модели, департаменты и действия в управляемый цикл;  
-- слой над моделями, памятью и инструментами (их можно менять без ломки continuity и governance).
+runtime‑слой, который связывает задачи, контекст, память, навыки, модели, департаменты/desk’и и действия в управляемый цикл;
 
----
+слой над моделями, памятью и инструментами: их можно менять без ломки continuity, governance и трассировки.
 
-## Tenant / Workspace / User
+Tenant / Workspace / User
+Tenant — верхнеуровневая граница клиента/организации. Обеспечивает изоляцию данных, политик, секретов и биллинга между организациями.
 
-- **Tenant** — верхнеуровневая граница клиента/организации.  
-  Отвечает за изоляцию данных, политик и биллинга между организациями.
+Workspace — контейнер рабочей реальности внутри tenant’а: проект, кодовая база, клиент, продукт, департамент.
+Все Task, Workflow, Artifact, MemoryRecord, Trace, EvaluationRecord и BillableEvent привязаны к Workspace.
 
-- **Workspace** — контейнер рабочей реальности внутри tenant’а: проект, кодовая база, клиент, продукт.  
-  Все `Task`, `Workflow`, `Artifact`, `MemoryRecord`, `Trace` и `BillableEvent` привязаны к Workspace.
+User — конкретный человек или интеграция, от имени которого ведётся работа (чаты, API‑ключи, сервис‑аккаунты).
 
-- **User** — конкретный человек или интеграция, от имени которого ведётся работа (чаты, API‑ключи, сервис‑аккаунты).
+Task / Workflow / Artifact / Skill / Policy / Trace / RuntimeConfig
+Task — единица работы: вход (запрос, параметры), контекст, состояние, результат и оценка. Может быть одиночной задачей или частью workflow.
 
----
+Workflow — цепочка связанных шагов/департаментов/agents для достижения бизнес‑цели. Имеет собственный идентификатор, состояние и связанный Task/Trace.
 
-## Task / Workflow / Artifact / Skill / Policy / Trace / RuntimeConfig
+Artifact — результат работы: файл, отчёт, summary, патч, launch kit, решение. Всегда привязан к Task/Workflow и Workspace, имеет lineage (derived_from, approved_by, runtime_version).
 
-- **Task** — единица работы: вход (запрос, параметры), контекст, состояние и результат.  
-  Может быть одиночной задачей или частью workflow.
+Skill — оформленная reusable процедура (план/шаблон действий, код/конфиг), которую runtime может вызывать и версионировать. Живёт как явный артефакт, а не как скрытая “память модели”.
 
-- **Workflow** — цепочка связанных шагов/департаментов/агентов для достижения бизнес‑цели.  
-  Имеет собственный идентификатор, состояние и связанный `Task`/`Trace`.
+Policy — правило/ограничение поведения (budget, risk, autonomy, доступ к инструментам, data‑scoping). Применяется Policy Engine’ом к workflow/agent/action.
 
-- **Artifact** — результат работы: файл, отчёт, summary, патч, launch kit, решение.  
-  Всегда привязан к `Task`/`Workflow` и `Workspace`.
+Trace — наблюдаемая история reasoning/execution: какие шаги были проделаны, какие модели/инструменты вызваны, какие решения и approvals приняты, какие расходы и ошибки произошли. Хранится в TraceStore (task_traces, episodes, events).
 
-- **Skill** — оформленная reusable процедура (план/шаблон действий), которую Runtime может вызывать и версионировать.  
-  Живёт как явный артефакт (код/конфиг/док), а не как “память модели”.
+RuntimeConfig — версия настроек моделей, prompts, политик и лимитов для задач. Каждая задача исполняется под конкретной версией RuntimeConfig, которая фиксируется в трейсах и не меняется “по ходу”.
 
-- **Policy** — правило/ограничение поведения (budget, risk, autonomy, доступ к инструментам, data‑scoping).  
-  Применяется Policy Engine’ом к workflow/agent/action.
+Runtime Planner / Cognition Graph / Orchestrator
+Runtime Planner — компонент, который:
 
-- **Trace** — наблюдаемая история reasoning/execution: какие шаги были проделаны, какие модели/инструменты вызваны, какие решения приняты, какие расходы и governance‑события произошли.
+интерпретирует входящий запрос как Task + task_type + runtime_mode + приблизительный risk_level;
 
-- **RuntimeConfig** — версия настроек моделей, prompts, политик и лимитов для задач.  
-  Каждая задача исполняется под конкретной версией `RuntimeConfig`, которая не меняется “по ходу”.
+выбирает топологию выполнения (direct vs orchestrated, simple / tool‑use / multistep / delegation);
 
----
+даёт подсказки Router’у по lane/модели;
 
-## Pith Runtime Planner / Cognition Graph / Orchestrator
+помечает execution_path: "direct" | "orchestrated" для observability/eval. 
 
-- **Runtime Planner** — компонент, который:
-  - интерпретирует входящий запрос как `Task` + `task_type` + `risk_level`;  
-  - выбирает топологию выполнения (simple / reflective / tool‑use / multistep / delegation);  
-  - решает, идти ли через Orchestrator (мультиагентный/многошаговый сценарий) или через direct LLM;  
-  - выдаёт план шагов для Execution Engine.
+Cognition Graph — явное описание когнитивного контура Pith Runtime:
 
-- **Cognition Graph** — явное описание когнитивного контура Pith Runtime:
-  - узлы: шаги `Task Interpretation → Planning → Tool/Model Calls → Evaluation → Memory Update`;  
-  - рёбра: переходы, зависящие от типа задачи, политики и результатов шагов;  
-  - топологии: simple, reflective, tool‑use, multistep, delegation.  
-  Planner использует graph для выбора маршрута выполнения.
+узлы: Task Interpretation → Planning → Tool/Model Calls → Evaluation → Memory Update;
 
-- **Orchestrator** — часть Core Runtime, bridge‑слой, который:
-  - распараллеливает работу нескольких модульных агентов/департаментов;  
-  - агрегирует их результаты;  
-  - управляет таймаутами, fallback’ами и ошибками.
+рёбра: переходы в зависимости от task_type, режима, политики и результатов шагов;
 
-Главное: Orchestrator — часть ядра, Planner решает “как”, Router/Model Plane — “на какой модели и с какими инструментами”.
+топологии: simple, reflective, tool‑use, multistep, delegation.
+Planner использует graph как карту возможных путей.
 
----
+Orchestrator — часть Core Runtime, которая:
 
-## Agent / Department / Agent Company
+может распараллеливать работу нескольких модульных агентов/департаментов;
 
-- **Agent (в терминах Pith)** — не “магическая сущность”, а:
-  - модуль с чётким контрактом (`process`/`process_async` + типизированный ввод/вывод);  
-  - работающий в своём контексте (memory namespace, доступные tools, допустимые модели, autonomy tier);  
-  - управляемый Orchestrator’ом и Policy Engine.
+агрегирует результаты;
 
-- **Department** — логический отдел цифровой компании (Sales, Marketing, Research, Delivery, Support/Ops), состоящий из связанных агентов/ролей.  
-  Пример: Sales Squad = Lead Finder, Lead Qualifier, Outreach, Follow‑up, CRM Agent.
+управляет таймаутами, fallback’ами и ошибками по policy.
 
-- **Pith Agent Company** — прикладной слой поверх Runtime: набор департаментов и workflows, которые реализуют бизнес‑функции (лиды, кампании, ресёрчи, релизы, саппорт) и монетизируются через billable events.
+Главное: Planner решает “как и по какому пути”, Orchestrator исполняет этот путь, Router/Model Plane отвечает за “на какой модели и с какими инструментами”.
 
----
+Agent / Department / Desk / Agent Company
+Agent (в Pith) — модуль с чётким контрактом (process / process_async + типизированный ввод/вывод), работающий:
 
-## Continuity / Memory / Observability / Evaluation / Governance
+в своём memory namespace,
 
-- **Continuity** — способность Pith вести работу через время, интерфейсы и задачи: помнить решения, причины, артефакты и состояние workspace/tenant.  
-  Continuity опирается на State Layer (Tasks, Workflows, Artifacts, MemoryRecords, Traces).
+с ограниченным набором tools/models,
 
-- **Memory** — слой, который хранит:
-  - short‑term контекст сессии;  
-  - episodic историю;  
-  - semantic знания и документы;  
-  - профиль пользователя/команды.  
-  Memory управляется Memory Manager’ом и подчиняется политикам workspace/tenant.
+под своим risk_tier и autonomy‑уровнем.
+Управляется Orchestrator’ом и Policy Engine.
 
-- **Observability** — возможность реконструировать, как система приняла решения и что сделала: traces, events, metrics, cost, failure taxonomy.  
-  Это основа для дебага, доверия, биллинга и eval.
+Department — логический отдел цифровой компании (Support/Ops, Back Office, Revenue, Research, Delivery), состоящий из связанных агентов/ролей.
 
-- **Evaluation** — измерение качества, надёжности, стоимости и полезности workflows (task success, human override, quality score, cost per workflow, policy violations).  
-  Используется для self‑evolution и governance.
+Desk — конкретный productized пакет департамента (например, Support/Ops Desk как v5.4 wedge для B2B команд).
 
-- **Governance** — слой, который делает автономию управляемой:
-  - `RuntimeConfig`, политики, лимиты;  
-  - `PolicyDecision`, approvals;  
-  - PatchGate, RolloutManager, kill switches;  
-  - метрики и алерты.
+Pith Agent Company — прикладной слой поверх Runtime: набор департаментов/desk’ов и workflows, которые реализуют бизнес‑функции (support, ops, back office, revenue) и монетизируются через billable events.
 
-В сумме: **continuity + memory + orchestrated execution + observability + evaluation + governed autonomy** — это и есть Pith Runtime как Kernel.
+Continuity / Memory / Observability / Evaluation / Governance
+Continuity — способность Pith вести работу через время, интерфейсы и задачи: помнить решения, причины, артефакты и состояние workspace/tenant. Опирается на State Layer (Tasks, Workflows, Artifacts, MemoryRecords, Traces).
 
----
+Memory — слой, который хранит:
 
-## Autonomy Levels (L0–L4)
+short‑term контекст сессии,
 
-**Autonomy** — степень, в которой Pith имеет право:
+episodic историю (episodes),
 
-- сам выбирать модели/инструменты/маршруты;  
-- сам применять изменения (патчи, PR, обновления БД, внешние действия) без подтверждения человека.
+semantic знания и документы,
+
+профиль пользователя/команды.
+Управляется Memory Manager’ом и подчиняется политикам workspace/tenant; retrieval ограничен relevance‑floor и token‑budget.
+
+Observability — возможность реконструировать, как система приняла решения и что сделала: TraceStore (task_traces), episodes, metrics, failure taxonomy, cost.
+
+Evaluation — измерение качества, надёжности, стоимости и полезности workflows через EvaluationRecord v1 (task_success, human_override, quality_score, cost_per_workflow, policy_violation, failure_class и др.).
+
+Governance — слой, который делает автономию управляемой:
+
+RuntimeConfig, политики и лимиты,
+
+PolicyDecision, approvals/HITL,
+
+PatchGate, RolloutManager, kill switches,
+
+метрики, алерты, canary/rollback.
+
+В сумме: continuity + memory + orchestrated execution + observability + evaluation + governed autonomy = Pith Runtime как Kernel.
+
+Autonomy Levels (L0–L4)
+Autonomy — степень, в которой Pith имеет право:
+
+сам выбирать модели/инструменты/маршруты внутри заданных политик;
+
+сам применять изменения (патчи, PR, обновления БД, внешние действия) без подтверждения человека.
 
 Уровни:
 
-- **L0 — Manual / Advisory**: думает, рекомендует, черновики; внешние действия делает человек.  
-- **L1 — Assisted**: готовит и может выполнять низкорисковые внутренние действия; человек подтверждает важное.  
-- **L2 — Supervised / Semi‑auto**: может выполнять ограниченные внешние действия под политиками и с review/эскалацией.  
-- **L3 — Auto / Canary**: выполняет определённые прод‑действия автономно через canary‑роллауты и строгие метрики.  
-- **L4 — High Autonomy**: только для узких, полностью проверенных workflows, под жёсткими ограничениями.
+L0 — Manual / Advisory: думает, рекомендует, делает черновики; внешние действия делает человек.
 
-В Pith v1.1 основная работа — на L0–L1 с точечным L2 для узких сценариев; L3–L4 — будущее и требуют сильного governance/eval.
+L1 — Assisted: может выполнять низкорисковые внутренние действия; человек подтверждает важное и всё внешнее.
 
----
+L2 — Supervised / Semi‑auto: может выполнять ограниченные внешние действия по approved policy и с review/эскалацией.
 
-## Billable Event / Cost
+L3 — Auto / Canary: выполняет определённые прод‑действия автономно через canary‑роллауты и строгие метрики.
 
-- **BillableEvent** — бизнес‑событие, по которому считается стоимость и монетизация:  
-  примеры — `qualified_lead_created`, `campaign_pack_generated`, `research_brief_delivered`, `launch_kit_delivered`, `support_case_resolved`, `workflow_completed`, `human_review_performed`.
+L4 — High Autonomy: только для узких, полностью проверенных workflows под жёсткими ограничениями.
 
-- **Cost** — совокупные расходы по моделям/инструментам/инфре для задачи/воркфлоу.  
-  В Pith cost всегда атрибутируется по `tenant`, `workspace`, `workflow`, `department`, `tool/model` и связывается с BillableEvents.
+Текущий допустимый режим v5.x: L0–L1 + точечный L2 для узких, хорошо наблюдаемых сценариев; L3–L4 — будущее, требующее сильного governance/eval.
 
----
+Billable Event / Cost
+BillableEvent — бизнес‑событие, по которому считается стоимость и монетизация:
+support_case_resolved, workflow_completed, qualified_lead_created, campaign_pack_generated, research_brief_delivered, human_review_performed и др.
 
-## Pith Self‑Evolution Runtime
+Cost — совокупные расходы по моделям/инструментам/инфре для задачи/воркфлоу. В Pith cost атрибутируется по tenant, workspace, workflow, department, tool/model и связывается с BillableEvents и EvaluationRecord.
 
-**PITH_SELF_EVOLUTION_RUNTIME_V1** — архитектурный контракт того, как Pith улучшает собственный runtime:
+Pith & AGI / Self‑Evolution Runtime
+AGI (в контексте Pith) — не “человечность”, а набор свойств: трансфер между доменами, самообучение без дообучения весов, причинное понимание и целеполагание/адаптивное планирование. Pith сам по себе не AGI, а runtime‑слой поверх LLM, который может эволюционировать и накапливать能力.
 
-- собирает сигналы из Observability и Evaluation;  
-- через evaluator → failure miner → patch planner предлагает патчи (skills, prompts, policies, routing);  
-- пропускает их через PatchGate и RolloutManager;  
-- измеряет эффект и откатывает деградирующие изменения.
+PITH_SELF_EVOLUTION_RUNTIME_V1 — архитектурный контракт того, как Pith улучшает собственный runtime:
+
+собирает сигналы из Observability и Evaluation,
+
+через evaluator → failure_miner → patch_planner формирует патчи (skills, prompts, policies, routing),
+
+пропускает их через PatchGate и RolloutManager,
+
+измеряет эффект и откатывает деградирующие изменения.
 
 Self‑evolution:
 
-- не меняет ядро runtime без участия человека;  
-- не обучает базовые модели;  
-- не выходит за рамки `autonomy.yaml` и governance‑политик;  
-- служит для того, чтобы OS становилась умнее и дешевле, а не неконтролируемо автономной.
+не меняет ядро runtime без участия человека;
+
+не обучает базовые модели;
+
+не выходит за рамки autonomy.yaml и governance‑политик;
+
+служит для того, чтобы runtime становился умнее, дешевле и безопаснее, а не неконтролируемо автономным.
+

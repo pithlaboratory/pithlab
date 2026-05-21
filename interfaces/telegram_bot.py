@@ -79,6 +79,26 @@ from core.schemas import TaskState
 from core.services.task_service import TaskService
 from core.services.artifact_service import ArtifactService
 
+try:
+    from core.observability.integrations import (
+        init_observability,
+        set_scope,
+        capture_event,
+        capture_exception,
+    )
+except ImportError:
+    def init_observability():
+        return None
+
+    def set_scope(**kwargs):
+        return None
+
+    def capture_event(*args, **kwargs):
+        return None
+
+    def capture_exception(*args, **kwargs):
+        return None
+
 # Optional trace service
 try:
     from core.governance.trace_service import TraceService
@@ -115,6 +135,12 @@ if sys.version_info >= (3, 9):
 logging.basicConfig(**logging_kwargs)
 logger = logging.getLogger(__name__)
 
+try:
+    init_observability()
+except Exception as e:
+    logger.warning("Observability init skipped: %s", e)
+
+
 if trace_service is None:
     logger.warning("TraceService not found — tracing disabled (non-critical)")
 
@@ -137,11 +163,11 @@ SYSTEM_PROMPT = PERSONA_CFG.get("system_prompt", "")
 
 KNOWN_PREFIXES = INTERFACE_CFG.get(
     "known_prefixes_to_strip",
-    ["🎭 Viktor Vaughn:", "Viktor Vaughn:", "Pith:", "pith:", "PITH:"],
+    ["Pith:", "pith:", "PITH:"],
 )
 
 VOICE_MODE = INTERFACE_CFG.get("voice_mode", "runtime")
-RUNTIME_ONLY_PREFIXES = ["🎭 Viktor Vaughn:", "Viktor Vaughn:", "Pith:", "pith:", "PITH:"]
+RUNTIME_ONLY_PREFIXES = ["Pith:", "pith:", "PITH:"]
 
 TOKEN = TG_TOKEN
 
@@ -269,10 +295,10 @@ TELEGRAM_DATA_EXFILTRATION_REPLY = _fmt_sys(
 )
 
 # ✅ NEW: Workspace isolation refusal
-TELEGRAM_WORKSPACE_ISOLATION_REPLY = _fmt_sys(
-    "Я не могу выдавать задачи, артефакты или другие данные из чужого workspace.\n\n"
-    "Доступ к данным ограничен границами текущего workspace, и я не раскрываю сведения о чужих workspace через чат.\n\n"
-    "Если вам нужен доступ по рабочему процессу, это должно оформляться через предусмотренный механизм доступа, а не через запрос в Telegram."
+TELEGRAM_INTERNAL_LEAK_REPLY = _fmt_sys(
+    "Запрошенная информация относится к скрытым служебным инструкциям, секретам или внутренним маркерам системы и не предназначена для передачи через чат.\n\n"
+    "Я не могу показывать скрытый system prompt, секреты доступа или внутренние служебные маркеры. Это стандартная мера защиты.\n\n"
+    "Если у вас практический вопрос по устройству системы, конфигу или логике работы — сформулируйте его прямо, и я отвечу в допустимых пределах."
 )
 
 # ✅ FIXED: Single backslash in raw strings for regex metacharacters
@@ -289,12 +315,11 @@ TELEGRAM_DANGEROUS_DELETE_PATTERNS = [
 TELEGRAM_INTERNAL_LEAK_PATTERNS = [
     re.compile(r"(системн\w*\s+инструкц\w*)", re.IGNORECASE),
     re.compile(r"(скрыт\w*\s+промпт\w*|hidden\s+prompt|system\s+prompt)", re.IGNORECASE),
-    re.compile(r"\b(промпт\w*|prompt)\b", re.IGNORECASE),
-    re.compile(r"\b(конфиг\w*|конфигурац\w*|config)\b", re.IGNORECASE),
-    re.compile(r"\b(лог\w*|logs?)\b", re.IGNORECASE),
-    re.compile(r"\b(runtime[-\s]?конфиг|runtime[-\s]?logs?)\b", re.IGNORECASE),
-    re.compile(r"\b(токен\w*|tokens?|api[-\s]?key|keys?)\b", re.IGNORECASE),
-    # ✅ FIXED: No \b around : markers
+    re.compile(
+        r"(покажи|дай|раскрой|выведи|show|reveal)\s+.*(prompt|промпт|system|instructions|инструкц)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(api[-\s]?key|secret|access[-\s]?token)", re.IGNORECASE),
     re.compile(r"(SKIP:|TOOL_SKIP:|ROUTER_SKIP:|SEARCH_SKIP:|MEMORY_SKIP:)", re.IGNORECASE),
 ]
 
@@ -771,6 +796,27 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    chat = update.effective_chat
+    message = update.effective_message
+
+    _obs_user_id = str(user.id) if user else "unknown"
+    _obs_chat_id = str(chat.id) if chat else "unknown"
+    _obs_trace_id = str(uuid.uuid4())
+    _obs_task_id = None
+
+    set_scope(
+        trace_id=_obs_trace_id,
+        task_id=None,
+        user_id=_obs_user_id,
+        interface="telegram",
+        chat_id=_obs_chat_id,
+    )
+    capture_event(_obs_user_id, "telegram_message_received", {
+        "trace_id": _obs_trace_id,
+        "chat_id": _obs_chat_id,
+        "interface": "telegram",
+    })
     if not update.message or not update.effective_user:
         return
 
@@ -865,6 +911,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     task_service.update_status(task_id, TaskState.executing)
 
+    _obs_task_id = str(task_id)
+    _obs_trace_id = str(trace_id)
+    set_scope(
+        trace_id=_obs_trace_id,
+        task_id=_obs_task_id,
+        user_id=_obs_user_id,
+        interface="telegram",
+        chat_id=_obs_chat_id,
+    )
+    capture_event(_obs_user_id, "task_started", {
+        "trace_id": _obs_trace_id,
+        "task_id": _obs_task_id,
+        "workspace_id": workspace_id,
+        "interface": "telegram",
+        "runtime_mode_hint": detect_runtime_mode_ui(text).value,
+    })
+
     chat_id = update.effective_chat.id
     await send_typing_safe(context, chat_id)
     loading_msg = await send_loading_placeholder(update.message, PITH_LOADING_STATES[0])
@@ -938,6 +1001,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.exception("Planner failed")
+        capture_exception(e, {
+            "trace_id": str(trace_id),
+            "task_id": str(task_id),
+            "workspace_id": workspace_id,
+            "interface": "telegram",
+            "user_id": user_id,
+            "chat_id": chat_id,
+        })
+        capture_event(_obs_user_id, "task_failed", {
+            "trace_id": str(trace_id),
+            "task_id": str(task_id),
+            "workspace_id": workspace_id,
+            "interface": "telegram",
+            "error_type": type(e).__name__,
+            "error": str(e)[:500],
+        })
         task_service.update_status(task_id, TaskState.failed, error_message=str(e))
 
         if trace_service is not None:
@@ -986,6 +1065,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ✅ FIXED: Filter internal runtime markers from user-visible response
     raw_response = result.get("response", "")
+
+    capture_event(_obs_user_id, "task_completed", {
+        "trace_id": str(trace_id),
+        "task_id": str(task_id),
+        "workspace_id": workspace_id,
+        "interface": "telegram",
+        "response_len": len(raw_response or ""),
+        "latency_ms": latency_ms,
+        "runtime_mode": runtime_mode_str,
+        "task_type": task_type,
+        "model_id": result.get("model_id"),
+        "cost_usd": result.get("cost", 0.0),
+    })
     prefixed_response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
     response = normalize_user_visible_response(raw_response)
     internal_markers_stripped = response != prefixed_response

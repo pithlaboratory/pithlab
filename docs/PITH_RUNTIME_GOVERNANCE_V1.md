@@ -1,10 +1,20 @@
 # Pith Governance v1
 
+> **Status:** ACCEPTED  
+> **File role:** runtime governance contract for Pith v5.4  
+> **Scope:** control plane for autonomy tiers L0–L2, approval boundaries, tool/action constraints, and workspace/tenant safety.  
+> 
+> **Runtime status (May 2026):**
+> - Active autonomy tiers in production: Tier 0–1.
+> - Tier 2 is design-approved but not broadly enabled.
+> - Tier 3–4 remain restricted / out of active production scope for v5.x.
+> - Current live focus: Support/Ops Desk + runtime stabilization, not broad autonomous agent-company rollout.
+
 > Governance architecture for Pith v5 as a runtime‑native, continuity‑aware, multi‑agent operating system.
 
 ---
 
-## 1. Purpose
+## 1. Purpose 
 
 Pith Governance v1 defines how Pith controls **authority, approvals, autonomy levels, action boundaries, policy enforcement, and accountability** across workspaces, agents, and departments.[web:338][web:342]
 
@@ -21,6 +31,8 @@ It is an **execution control layer** that determines:
 This document exists because agent capability without governance becomes unsafe, untrustworthy, and commercially fragile.[web:339][web:342]
 
 Governance is implemented as a **runtime control plane** — policies are enforced before и во время выполнения, а не только на этапе дизайна.[web:341]
+
+For Pith v5.4, Governance v1 is specifically intended as a runtime enforcement layer for real execution paths, not only as an architectural doctrine. It must connect directly to TraceStore, EvaluationRecord v1, Safe Tool Runtime Policy, and workspace-scoped execution boundaries.
 
 ---
 
@@ -226,6 +238,11 @@ Mapping tool→action_class хранится в tool registry: один tool м�
 
 Для Pith v5–v6 целю является активное использование Tier 0–2, точечное Tier 3 и крайне ограниченный / почти отсутствующий Tier 4.[web:341][web:350]
 
+**Implementation note for v5.4:**
+- Tier 0–1 are the active runtime tiers.
+- Tier 2 may be enabled only for bounded, well-evaluated workflows with explicit approval and observability coverage.
+- Tier 3–4 are architectural future states and must not be treated as active runtime defaults.
+
 ---
 
 ## 8. Human‑in‑the‑Loop (Approval Model)
@@ -427,6 +444,8 @@ Governance опирается на observability.
 
 Если workflow не может объяснить, почему действие было разрешено, заблокировано или эскалировано, governance считается слабым.
 
+For v5.4, governance traceability should be implemented through TraceStore v1.1 and linked evaluation records. At minimum, governance-relevant actions should be reconstructable from `trace_id`, `task_id`, `workspace_id`, `failure_class`, `runtime_mode`, and policy outcome metadata.
+
 ---
 
 ## 14. Governance & Evaluation
@@ -446,6 +465,8 @@ Governance тоже должен измеряться.[web:342][web:345]
 - operator correction после approval.
 
 Слишком слабый governance опасен, слишком шумный — непрактичен.
+
+Governance decisions should be measurable through EvaluationRecord v1 and Eval Ops v1 review loops, including policy violation rate, approval frequency, override after approval, and autonomy overreach signals.
 
 ---
 
@@ -482,6 +503,26 @@ Governance должен понимать **бизнес‑операции**, а
 
 ---
 
+## 16a. Concrete Runtime Hooks for v1
+
+To make Governance v1 operational in the runtime, Pith should implement the following minimum hooks:
+
+1. Tag high-impact tool calls with `action_class`.
+2. Emit governance decision events for gated actions with:
+   - `trace_id`
+   - `task_id`
+   - `workspace_id`
+   - `policy_id`
+   - `action_class`
+   - `outcome`
+   - `approval_state` (if applicable)
+3. Enforce Safe Tool Runtime Policy with deny-by-default behavior for non-approved high-impact actions.
+4. Validate governance configuration (`autonomy.yaml` or equivalent) on startup.
+5. Reject runtime start if governance configuration is invalid.
+6. Preserve workspace and tenant boundaries across memory, artifacts, and tool access.
+
+---
+
 ## 17. Out of Scope for v1
 
 Не требуется немедленно:
@@ -515,3 +556,13 @@ Pith не должен увеличивать автономию, расширя
 - явно описано,
 - прозрачно для оператора,
 - enforce‑ится в Runtime.[web:342][web:351]
+
+---
+
+<div style="text-align: center; margin-top: 40px; color: #666;">
+
+**Pith Lab · Москва · 2026**
+
+*Версия v1 · Май 2026 · ACCEPTED · CONFIDENTIAL / INTERNAL*
+
+</div>

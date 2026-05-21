@@ -1,108 +1,117 @@
-# Pith Manifesto
+Этот манифест по сути уже совпадает с PITH_MASTER_PLAN v5.4 и IDENTITY.md, но его лучше чуть выровнять под актуальный фокус: runtime‑first + Support/Ops Desk wedge, а Agent Company OS оставить как долгосрочный слой сверху, а не равноправную часть one‑liner’а.
 
-## One line
+Ниже — обновлённая версия docs/MANIFESTO.md, которую можно положить вместо текущей.
 
-Pith is a **self-improving continuity runtime / workspace-native orchestration runtime и Agent Company OS** for long-running cognitive work.
+One line
+Pith is a self‑improving continuity runtime / workspace‑native orchestration runtime for long‑running cognitive and operational work.
 
-Он существует не для того, чтобы отвечать на промпты, а чтобы удерживать и вести работу через время, интерфейсы, артефакты и цифровые команды.
+Он существует не для того, чтобы отвечать на промпты, а чтобы удерживать и вести работу через время, интерфейсы, артефакты и цифровые команды внутри workspace’ов.
 
----
+Поверх этого runtime‑ядра могут подниматься цифровые департаменты и desks (начиная с Support/Ops Desk), а в долгосрочной перспективе — более широкий слой “Agent Company OS”.
 
-## Problem
-
+Problem
 Современный стек выглядит так:
 
-- проекты разбросаны по репозиториям, таск-менеджерам, Notion/Confluence, локальным файлам и чатам;
-- чаты статичны: каждый диалог живёт сам по себе, история плохо связывается с кодом, задачами и решениями;
-- AI-инструменты либо "сидят" внутри отдельного продукта (Notion AI, Jira AI, GitHub Copilot), либо живут как отдельный чат, который всё время нужно заново обучать контексту.
+проекты размазаны по репозиториям, таск‑менеджерам, Notion/Confluence, локальным файлам и чатам;
 
-Даже сильные модели решают **промпт здесь и сейчас**, но не:
+чаты статичны: каждый диалог живёт сам по себе, история плохо связывается с кодом, задачами и решениями;
 
-- удерживают целостную картину проекта;
-- помнят решения и их причины;
-- управляют долгим циклом `research → planning → execution → review → iteration`;
-- дают наблюдаемость и управляемую автономию;
-- организуют работу в виде слаженных цифровых команд и департаментов.
+AI‑инструменты либо “сидят” внутри отдельных продуктов (Notion AI, Jira AI, GitHub Copilot), либо живут как отдельный чат, который всё время нужно заново обучать контексту.
 
-Итог: человек остаётся "оркестратором по умолчанию" и постоянно тратит внимание на сбор контекста, повторения и ручное связывание частичных результатов.
+Даже сильные модели решают промпт здесь и сейчас, но не:
 
----
+удерживают целостную картину проекта или операционного процесса;
 
-## Core Promise
+помнят решения и их причины в привязке к workspace;
 
-**Pith must make complex work continuous, accumulative, governable and observable.**
+управляют долгим циклом intake → triage → research → planning → execution → review → iteration;
 
-- **Continuous** — работа не обнуляется между сессиями, интерфейсами и моделями; контекст не нужно объяснять заново каждый день.
-- **Accumulative** — каждая задача добавляет системе знание или способность: артефакт, процедуру, skill, улучшенную политику.
-- **Governable** — поведение системы наблюдаемо, контролируемо и безопасно: есть трассировка, версии, политики, approvals, rollback, понятные границы автономии (L0–L4).
-- **Observable** — видно не только "что получилось", но и "как прошли решения": planner, orchestrator, департаменты, tools, память, стоимость, ошибки.
+дают наблюдаемость, управляемую автономию и перевариваемые отчёты;
 
-Pith — это не один ассистент, а **операционный контур**, в котором разумные агенты и инструменты действуют по правилам и в общем состоянии.
+организуют работу в виде слаженных цифровых отделов (support, ops, back office, revenue) поверх общего контекста.
 
-Поверх этого контура строится **Agent Company OS** — цифровая компания из специализированных департаментов (Sales, Marketing, Research, Delivery, Support/Ops), которые работают на общей памяти, runtime и governance.
+Итог: человек остаётся “оркестратором по умолчанию” и постоянно тратит внимание на сбор контекста, повторения и ручное связывание частичных результатов.
 
----
+Core Promise
+Pith must make complex work continuous, accumulative, governable and observable.
 
-## What Pith is not
+Continuous — работа не обнуляется между сессиями, интерфейсами и моделями; контекст не нужно объяснять заново каждый день.
 
-Pith **не** должен становиться:
+Accumulative — каждая задача добавляет системе знание или способность: артефакт, процедуру, skill, улучшенную политику.
 
-- ещё одним LLM chat, даже "с хорошей памятью";
-- Telegram-ботом как сущностью продукта (Telegram — только интерфейс поверх ядра);
-- zoo агентов, где главная ценность — количество "ролей", а не результат, continuity и управляемость;
-- "магической самопереписывающейся системой" без контроля, версий и трассировки;
-- ещё одной "AI надстройкой" к существующему workspace (типа Notion AI/Slack AI), где ИИ — просто дополнительная кнопка.
+Governable — поведение системы наблюдаемо, контролируемо и безопасно: есть трассировка, версии, политики, approvals, rollback, понятные границы автономии (L0–L4).
 
-Pith — это **ядро**, вокруг которого могут жить боты, UI, API, интеграции и цифровые департаменты. Не наоборот.
+Observable — видно не только “что получилось”, но и “как прошли решения”: planner, orchestrator, департаменты/desk’и, tools, память, стоимость, ошибки.
 
----
+Pith — это не один ассистент, а операционный контур, в котором разумные агенты и инструменты действуют по правилам и в общем состоянии.
 
-## Pith vs current AI tools
+Поверх этого контура строятся цифровые департаменты / desks (Support/Ops, далее Back Office, Revenue и т.п.), а в долгосрочной перспективе — более широкий слой “Agent Company OS” поверх стабильного runtime.
 
+What Pith is not
+Pith не должен становиться:
+
+ещё одним LLM‑чатом (даже “с хорошей памятью”);
+
+Telegram‑ботом как сущностью продукта (Telegram/CLI/API/web — только интерфейсы поверх ядра);
+
+зоопарком агентов, где ценность — количество “ролей”, а не результат, continuity и управляемость;
+
+“магической самопереписывающейся системой” без контроля, версий и трассировки;
+
+ещё одной “AI‑надстройкой” к существующему workspace (Notion/Jira/Slack с одной лишней кнопкой “Ask AI”).
+
+Pith — это ядро, вокруг которого могут жить боты, UI, API, интеграции и цифровые департаменты. Не наоборот.
+
+Pith vs current AI tools
 Сегодня:
 
-- ChatGPT/Claude и другие ассистенты решают отдельные задачи и промпты.
-- AI workspace tools добавляют ИИ в существующие документы/таски, но не строят целостную agentic‑архитектуру с оркестрацией, памятью и governance.
-- Memory‑инфраструктуры дают слой памяти, но не управляют самим ходом работы и задачами.
-- Enterprise agentic‑платформы концентрируются на процессах и автономии, но часто закрыты, тяжёлые и заточены под крупные организации.
+ChatGPT/Claude и другие ассистенты решают отдельные запросы и промпты.
+
+AI workspace‑инструменты добавляют ИИ к документам/таскам, но редко строят целостную agentic‑архитектуру с оркестрацией, памятью и governance.
+
+Memory‑слои дают хранение контекста, но не управляют самим ходом работы и задачами.
+
+Enterprise agentic‑платформы концентрируются на процессах и автономии, но часто тяжёлые, закрытые и ориентированы на крупные организации.
 
 Pith занимает другое место:
 
-> **не** чат, не плагин к таск-менеджеру и не отдельная память,  
-> а **workspace-native orchestration runtime и Agent Company OS**, который связывает задачи, контекст, память, навыки, департаменты, модели и действия в один управляемый, наблюдаемый и эволюционирующий цикл.
+не чат, не плагин к таск‑менеджеру и не отдельная память,
+а workspace‑native orchestration runtime, который связывает задачи, контекст, память, навыки, департаменты и модели в один управляемый, наблюдаемый и эволюционирующий цикл.
 
----
+В v5.4 внешний продуктовый фокус конкретен: Support/Ops Desk для B2B‑команд поверх этого runtime, а не абстрактная “Agent Company OS для всего”.
 
-## System Layers (кратко)
+System Layers (кратко)
+Pith строится из нескольких слоёв (см. PITH_ARCHITECTURE_NORTH_STAR_V2.md и PITH_KERNEL.md):
 
-Pith строится из нескольких слоёв:
+Core Runtime — planner, router, orchestrator, memory, evaluator, policy engine.
 
-- **Core Runtime** — planner, orchestrator, memory, evaluator, policy engine.
-- **State Layer** — tenant, workspace, task, workflow, artifact, trace, memory, runtime config.
-- **Capability Layer** — model plane, tool plane, skills, repo/web intelligence.
-- **Agent Company Layer** — департаменты, агентные команды, billable events.
-- **Governance Layer** — observability, evaluation, approvals, autonomy tiers, rollback.
-- **Interface Layer** — Telegram, API, dashboard, CLI.
+State Layer — tenant, workspace, task, workflow, artifact, trace, memory, runtime config.
 
-Подробно: `PITH_KERNEL.md`, `ARCHITECTURE_NORTH_STAR (v2).md`, `PITH_AGENT_COMPANY_V1.md`.
+Capability Layer — model plane, tool plane, skills, repo/web/document intelligence.
 
----
+Department / Desk Layer — департаменты и desks (Support/Ops и последующие), billable workflows, billable events.
 
-## One-line formula
+Governance Layer — observability, evaluation, approvals, autonomy tiers, rollout/rollback, budget/risk policies.
 
-**Chat solves prompts. Pith solves continuity.**  
-**Agent tools do actions. Pith runs the company of agents around your workspaces.**
+Interface Layer — Telegram, API, dashboard/operator console, CLI, IDE/voice адаптеры.
+
+One-line formula
+Chat solves prompts. Pith solves continuity.
+Agent tools do actions. Pith runs the work around your workspaces under governance.
 
 Или иначе:
 
-> **Чат отвечает. Pith ведёт.**
+Чат отвечает. Pith ведёт и удерживает работу.
 
----
+Честность про AGI
+Pith не обещает AGI и не притворяется “магическим интеллектом”.
+Он строится как честный self‑improving runtime поверх внешних моделей с:
 
-## Честность про AGI
+прозрачностью (traces, eval, config versions),
 
-Мы не обещаем AGI и не притворяемся "магическим интеллектом".  
-Мы строим честный self‑improving runtime поверх внешних моделей.  
-Наша цель — прозрачность, эволюция и управляемость, а не хайп.
+управляемой автономией (L0–L4),
 
-Расширенная позиция по теме AGI и автономии: `docs/AGI_POSITION.md`.
+эволюцией через eval/failure_miner/patch_planner, а не через скрытую самоперепись ядра.
+
+Расширенная позиция по теме AGI и автономии описана в docs/PITH_AGI_POSITION.md.
+

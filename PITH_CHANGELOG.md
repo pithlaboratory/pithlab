@@ -9,7 +9,7 @@
 
 **Формат записи:** см. раздел "Changelog rules" в конце документа.
 
----
+***
 
 ## 2026-05-21
 
@@ -111,7 +111,45 @@
 - **Docs:** `config.yaml`, `interfaces/telegram_bot.py`, `docs/PITH_MASTER_PLAN.md#0.8`
 - **Commit:** `config: v5.0.1-clean-grounded — governance guards + fcntl lock + prompt hardening`
 
----
+### [observability] GovernanceDecision v1 — governance events in TraceStore
+
+- Добавлен практический контракт `GovernanceDecision v1` для runtime-governance событий:
+  - минимальный набор полей зафиксирован вокруг `trace_id`, `task_id`, `workspace_id`, `action_class`, `policy_id`, `outcome`, `approval_state`, `autonomy_tier`, `runtime_mode`, `actor`;
+  - формат предназначен для записи policy-решений по high-impact действиям до dispatch и во время approval flow;
+  - контракт синхронизирован с `Pith Governance v1`, `TraceStore v1.1` и `EvaluationRecord v1`.
+- Определена целевая additive-схема `governance_events` для `data/episodes.db`:
+  - отдельная таблица под governance-аудит, а не расширение `task_traces`;
+  - JSON-поля для `constraints` и `budget_state`;
+  - индексы по `trace_id/task_id`, `workspace_id`, `outcome/action_class`.
+- Зафиксирован минимальный integration path:
+  - `TraceStore.record_governance_decision(...)` как единая точка записи;
+  - emission из `PatchGate`, Safe Tool Runtime Policy и approval handlers;
+  - использование этих событий в Eval Ops для метрик approval frequency, denial rate, policy violations и autonomy overreach.
+
+- **Risk:** Low — пока это архитектурно-зафиксированное additive расширение observability/governance слоя.
+- **Rollback:** Удалить незамерженную схему/метод или откатить отдельный governance migration/patch.
+- **Docs:** `docs/PITH_RUNTIME_GOVERNANCE_V1.md`, `docs/PITH_OBSERVABILITY_V1.md`, `docs/PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`, `docs/PITH_EVALUATION_V1.md`
+- **Commit:** `observability: define GovernanceDecision v1 and governance_events integration path`
+
+### [docs] Safe Tool Runtime Policy + Operator Console v1 specs
+
+- Added `docs/PITH_SAFE_TOOL_RUNTIME_POLICY_V1.md`:
+  - defined tool/MCP action-class mapping,
+  - sandbox profiles,
+  - deny-by-default rules,
+  - governance/TraceStore integration for tool runtime.
+- Added `docs/PITH_OPERATOR_CONSOLE_V1.md`:
+  - defined minimal operator console contract,
+  - approval queue,
+  - trace/eval/governance event views,
+  - kill-switch and runtime controls for Tier 0–1.
+
+- **Risk:** None — docs only.
+- **Rollback:** Remove both files or restore previous repo state.
+- **Docs:** `docs/PITH_RUNTIME_GOVERNANCE_V1.md`, `docs/PITH_OBSERVABILITY_V1.md`, `docs/PITH_EVALUATION_V1.md`
+- **Commit:** `docs: add safe tool runtime policy and operator console v1 specs`
+
+***
 
 ## 2026-05-18
 
@@ -122,12 +160,12 @@
   - Рекомендуемый ключ для новых деплоев — `TELEGRAM_BOT_TOKEN`; `TG_TOKEN` и `TGTOKEN` остаются backward-compatible alias'ами.
   - Документацию/пример `.env` нужно обновить под эту схему.
 
-- Расширен `RuntimePlanner` для трейс‑корреляции:
+- Расширен `RuntimePlanner` для трейс-корреляции:
   - `RuntimePlanner.plan_and_answer(...)` принимает `trace_id` и пробрасывает его дальше в direct LLM flow.
   - Telegram interface генерирует `trace_id` на входе, передаёт его в `TaskService`/`RuntimePlanner` и сохраняет в `episodes.metadata` (user + assistant episodes).
 
 - Telegram interface пишет EvaluationRecord v1 в assistant episodes:
-  - `interfaces/telegram_bot.py` после `evaluator.evaluate_response(...)` обогащает eval‑blob полями:
+  - `interfaces/telegram_bot.py` после `evaluator.evaluate_response(...)` обогащает eval-blob полями:
     - `trace_id`, `workspace_id`, `task_id`,
     - `cost_per_workflow`,
     - `runtime_mode`, `task_type`, `workflow_type`,
@@ -141,22 +179,22 @@
   - Для свежего диалога `user: "салют smoke" / assistant: "Салют. Слышу. Чем помогу?" / user: "test eval v1"` в `episodes.db` появились:
     - user episode с `metadata.task_id` и `metadata.trace_id`,
     - assistant episode с `metadata.eval.eval_version = "evaluation_v1"` и всеми полями EvaluationRecord v1.
-  - Проверено через прямой SQLite‑запрос с `ORDER BY rowid DESC` и фильтрацией по `user_id`.
+  - Проверено через прямой SQLite-запрос с `ORDER BY rowid DESC` и фильтрацией по `user_id`.
 
 - Backward compat:
-  - Исторические assistant episodes до 2026‑05‑18 могут содержать старый eval‑формат (без `task_success` и `eval_version`).
+  - Исторические assistant episodes до 2026-05-18 могут содержать старый eval-формат (без `task_success` и `eval_version`).
   - Backward migration не выполнялась; для фильтрации актуальных records использовать:
     `json_extract(metadata, '$.eval.eval_version') = 'evaluation_v1'`.
 
 - **Risk:** Low — изменения additive:
-  - env‑lookup расширен через fallback,
+  - env-lookup расширен через fallback,
   - schema `episodes.db` не менялась,
-  - EvaluationRecord v1 совместим с уже существующими eval‑blob'ами (добавляются поля, не удаляются).
+  - EvaluationRecord v1 совместим с уже существующими eval-blob'ами (добавляются поля, не удаляются).
 - **Rollback:** Вернуть предыдущую версию `interfaces/telegram_bot.py`; перезапустить сервис.
 - **Docs:** `docs/PITH_OBSERVABILITY_V1.md`, `docs/PITH_EVALUATION_V1.md`
 - **Commit:** `feat: telegram eval v1 storage + trace correlation`
 
----
+***
 
 ## 2026-05-14
 
@@ -230,7 +268,7 @@
 - **Docs:** `docs/PITH_OBSERVABILITY_V1.md`, `docs/PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md`
 - **Commit:** `runtime: add failure taxonomy and enrich task traces`
 
----
+***
 
 ## 2026-05-12
 
@@ -262,7 +300,7 @@
 - **Docs:** `docs/PITH_OBSERVABILITY_V1.md`
 - **Commit:** `Add minimal task trace backbone`
 
----
+***
 
 ## 2026-05-07
 
@@ -317,7 +355,7 @@
 - **Rollback:** Вернуть предыдущую версию `handle_feedback()`.
 - **Commit:** `ux: silent feedback ack in Telegram interface`
 
----
+***
 
 ## 2026-04-29
 
@@ -374,7 +412,7 @@
 - **Docs:** `docs/PITH_MASTER_PLAN.md`, `docs/PITH_KERNEL.md`, `docs/ADR_INDEX.md`
 - **Commit:** `docs: align documentation hierarchy around continuity runtime`
 
----
+***
 
 ## 2026-04-28
 
@@ -424,7 +462,7 @@
 - **Docs:** `docs/PITH_MASTER_PLAN.md`, `PITH_DEV_CONTEXT.md`
 - **Commit:** `docs: engineering interpretation — runtime-first priority`
 
----
+***
 
 ## 2026-04-24
 
@@ -462,7 +500,7 @@
 - **Docs:** `PITH_DEV_CONTEXT.md`, `docs/PITH_MASTER_PLAN.md`
 - **Commit:** `docs: document immediate technical focus`
 
----
+***
 
 ## Changelog rules (template for future entries)
 
@@ -498,7 +536,7 @@ When updating this file, follow this structure and rules.
   - `observability` — TraceStore, логи, метрики,
   - `eval` — Evaluation/Evaluator/корпуса,
   - `product` — продуктовые определения/позиционирование,
-  - `workflow` — dev‑workflow/процессы,
+  - `workflow` — dev-workflow/процессы,
   - `identity` — идентичность продукта/бренда,
   - другие области по мере необходимости, но по минимуму.
 - `short-title` — короткое описание (1 строка, в стиле commit message).
@@ -527,7 +565,7 @@ When updating this file, follow this structure and rules.
 
 ### 4. Risk / Rollback / Docs / Commit
 
-В конце каждого change entry обязателен мини‑блок:
+В конце каждого change entry обязателен мини-блок:
 
 ```markdown
 - **Risk:** Low | Medium | High — краткое пояснение.
@@ -547,7 +585,7 @@ When updating this file, follow this structure and rules.
 
 Правила:
 
-- `Risk` всегда есть. Если изменения только в документации — писать `Low` или `None` и явно указывать, что это doc‑only.
+- `Risk` всегда есть. Если изменения только в документации — писать `Low` или `None` и явно указывать, что это doc-only.
 - `Rollback` описывает **реальный практический шаг**, а не абстрактное "revert in git".
 - `Docs` помогает быстро найти контекст.
 - `Commit` — как минимум один реальный commit message.
@@ -569,27 +607,27 @@ When updating this file, follow this structure and rules.
 
 ### 6. Language and style
 
-- Описания — **в прошедшем времени** ("Added", "Updated", "Fixed" / "Добавлен", "Обновлён", "Исправлен").
+- Описания — **в прошедшем времени** (`Added`, `Updated`, `Fixed` / `Добавлен`, `Обновлён`, `Исправлен`).
 - Язык: технические сущности на английском (`TraceStore`, `EvaluationRecord`, `TaskService`), поясняющий текст — RU/EN микс, как удобно команде.
 
 ### 7. What NOT to put into changelog
 
 В `PITH_CHANGELOG.md` не попадает:
 
-- Чистые эксперименты/ветки, не дошедшие до main/staging.
-- Временные ворк‑файлы и личные заметки.
-- Мелкие refactor‑ы без изменения поведения, если они не важны для истории.
+- Чистые эксперименты/ветки, не дошедшие до `main`/`staging`.
+- Временные ворк-файлы и личные заметки.
+- Мелкие refactor-ы без изменения поведения, если они не важны для истории.
 
 Если сомневаешься — лучше добавить краткую запись, но чётко обозначить `Risk: Low` и что это internal refactor.
 
----
+***
 
 > This changelog is a human-readable history of **meaningful changes** to
-> the Pith runtime, configuration, governance, and documentation.  
+> the Pith runtime, configuration, governance, and documentation.
 > It is not auto-generated; every entry must be intentional and useful for
 > future debugging, audits, and onboarding.
 
----
+***
 
 <div style="text-align: center; margin-top: 40px; color: #666;">
 
