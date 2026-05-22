@@ -1,51 +1,61 @@
 #!/usr/bin/env python3
+"""
+Inspect recent tasks and traces from episodes.db.
+
+Usage:
+    python inspect_traces.py [-n LIMIT] [-w WORKSPACE_ID]
+"""
 
 import argparse
-import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 DB_PATH = Path("data/episodes.db")
 
 
 def inspect_traces(limit: int = 10, workspace_id: str | None = None) -> None:
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+    """Fetch and print recent tasks with their trace linkage."""
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        cur = conn.cursor()
 
-    base_query = """
-        SELECT
-            t.id,
-            t.workspace_id,
-            t.status,
-            t.created_at,
-            t.completed_at,
-            json_extract(t.metadata_json, '$.trace_id') as meta_trace_id,
-            tt.status as trace_status,
-            tt.trace_id as trace_trace_id,
-            tt.cost_estimate_usd,
-            tt.started_at,
-            tt.finished_at,
-            tt.duration_ms
-        FROM tasks t
-        LEFT JOIN task_traces tt ON tt.task_id = t.id
-    """
+        base_query = """
+            SELECT
+                t.id,
+                t.workspace_id,
+                t.status,
+                t.created_at,
+                t.completed_at,
+                CASE
+                    WHEN t.metadata_json IS NOT NULL AND json_valid(t.metadata_json)
+                    THEN json_extract(t.metadata_json, '$.trace_id')
+                    ELSE NULL
+                END as meta_trace_id,
+                tt.status as trace_status,
+                tt.trace_id as trace_trace_id,
+                tt.cost_estimate_usd,
+                tt.started_at,
+                tt.finished_at,
+                tt.duration_ms
+            FROM tasks t
+            LEFT JOIN task_traces tt ON tt.task_id = t.id
+        """
 
-    params: list[object] = []
-    where_clauses: list[str] = []
+        params: list[object] = []
+        where_clauses: list[str] = []
 
-    if workspace_id:
-        where_clauses.append("t.workspace_id = ?")
-        params.append(workspace_id)
+        if workspace_id:
+            where_clauses.append("t.workspace_id = ?")
+            params.append(workspace_id)
 
-    if where_clauses:
-        base_query += " WHERE " + " AND ".join(where_clauses)
+        if where_clauses:
+            base_query += " WHERE " + " AND ".join(where_clauses)
 
-    base_query += " ORDER BY datetime(t.created_at) DESC LIMIT ?"
-    params.append(limit)
+        base_query += " ORDER BY datetime(t.created_at) DESC LIMIT ?"
+        params.append(limit)
 
-    cur.execute(base_query, params)
-    rows = cur.fetchall()
-    conn.close()
+        cur.execute(base_query, params)
+        rows = cur.fetchall()
 
     if not rows:
         print("No tasks found")
