@@ -1,4 +1,3 @@
-cat > scripts/inspect_eval.py <<'EOF'
 #!/usr/bin/env python3
 """
 Inspect recent evaluation records (EvaluationRecord v1) from episodes.db.
@@ -20,10 +19,6 @@ def inspect_eval(
     workspace_id: str | None = None,
     trace_id: str | None = None,
 ) -> None:
-    """
-    Fetch and print recent assistant episodes with EvaluationRecord v1 linkage.
-    """
-
     with closing(sqlite3.connect(DB_PATH)) as conn:
         cur = conn.cursor()
 
@@ -197,4 +192,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
