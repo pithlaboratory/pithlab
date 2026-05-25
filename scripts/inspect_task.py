@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = ROOT / "episodes.db"
@@ -18,92 +16,21 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def list_tables(conn: sqlite3.Connection) -> list[str]:
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    ).fetchall()
-    return [r["name"] for r in rows]
-
-
-def table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
-    rows = conn.execute(f"PRAGMA table_info('{table}')").fetchall()
-    return [r["name"] for r in rows]
-
-
-def find_candidate_columns(columns: list[str]) -> list[str]:
-    wanted = {
-        "task_id",
-        "trace_id",
-        "workspace_id",
-        "userid",
-        "user_id",
-        "role",
-        "content",
-        "metadata",
-        "created_at",
-        "updated_at",
-        "status",
-    }
-    out = [c for c in columns if c in wanted]
-    if out:
-        return out
-    return columns[:8]
-
-
-def maybe_parse_json(value: Any) -> Any:
-    if not isinstance(value, str):
-        return value
-    s = value.strip()
-    if not s:
-        return value
-    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
-        try:
-            return json.loads(s)
-        except Exception:
-            return value
-    return value
-
-
-def compact(value: Any, max_len: int = 220) -> str:
-    value = maybe_parse_json(value)
-    if isinstance(value, (dict, list)):
-        text = json.dumps(value, ensure_ascii=False, indent=2)
-    else:
-        text = str(value)
-    text = text.strip()
-    if len(text) > max_len:
-        return text[:max_len] + " …"
-    return text
-
-
-def search_table(conn: sqlite3.Connection, table: str, needle: str) -> list[sqlite3.Row]:
-    cols = table_columns(conn, table)
-    searchable = [c for c in cols if any(k in c.lower() for k in ("task", "trace", "content", "metadata"))]
-    if not searchable:
-        return []
-
-    where = " OR ".join([f"CAST(\"{c}\" AS TEXT) LIKE ?" for c in searchable])
-    sql = f'SELECT * FROM "{table}" WHERE {where} LIMIT 20'
-    params = [f"%{needle}%"] * len(searchable)
-    try:
-        return conn.execute(sql, params).fetchall()
-    except Exception:
-        return []
-
-
-def print_row(table: str, row: sqlite3.Row, full: bool) -> None:
-    data = dict(row)
-    cols = list(data.keys()) if full else find_candidate_columns(list(data.keys()))
-    print(f"\n[{table}]")
-    for col in cols:
-        print(f"  {col}: {compact(data.get(col), 1200 if full else 220)}")
+def shorten(text: str | None, limit: int = 220) -> str:
+    if text is None:
+        return "-"
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[:limit] + " …"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Inspect task/trace related records in episodes.db")
-    parser.add_argument("needle", help="task_id, trace_id, workspace_id or any identifying fragment")
-    parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to sqlite db (default: episodes.db)")
-    parser.add_argument("--full", action="store_true", help="Show all columns and larger values")
+    parser = argparse.ArgumentParser(
+        description="Inspect episode records by text fragment, role, or workspace_id."
+    )
+    parser.add_argument("needle", help="Text fragment to search in content/workspace_id/role")
+    parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to sqlite db")
+    parser.add_argument("--limit", type=int, default=20, help="Max rows to show")
+    parser.add_argument("--full", action="store_true", help="Show full content")
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -112,27 +39,29 @@ def main() -> int:
         return 1
 
     conn = connect(db_path)
-    tables = list_tables(conn)
+    rows = conn.execute(
+        """
+        SELECT id, ts, role, workspace_id, content
+        FROM episodes
+        WHERE COALESCE(content, '') LIKE ?
+           OR COALESCE(workspace_id, '') LIKE ?
+           OR COALESCE(role, '') LIKE ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (f"%{args.needle}%", f"%{args.needle}%", f"%{args.needle}%", args.limit),
+    ).fetchall()
 
-    if not tables:
-        print("No tables found.")
-        return 1
-
-    total_hits = 0
-    for table in tables:
-        rows = search_table(conn, table, args.needle)
-        if not rows:
-            continue
-        total_hits += len(rows)
-        print(f"\n=== table: {table} | hits: {len(rows)} ===")
-        for row in rows:
-            print_row(table, row, args.full)
-
-    if total_hits == 0:
+    if not rows:
         print(f"No matches found for: {args.needle}")
         return 2
 
-    print(f"\nDone. Total matched rows: {total_hits}")
+    for row in rows:
+        print(f"\n[id={row['id']}] ts={row['ts']} role={row['role']} workspace={row['workspace_id'] or '-'}")
+        content = row["content"] if args.full else shorten(row["content"])
+        print(f"content: {content}")
+
+    print(f"\nDone. Rows shown: {len(rows)}")
     return 0
 
 
