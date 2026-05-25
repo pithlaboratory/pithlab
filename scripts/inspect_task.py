@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "episodes.db"
+DEFAULT_DB = ROOT / "data" / "episodes.db"
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -23,14 +25,55 @@ def shorten(text: str | None, limit: int = 220) -> str:
     return text if len(text) <= limit else text[:limit] + " …"
 
 
+def shorten_json(metadata_json: str | None, limit: int = 220) -> str:
+    if not metadata_json:
+        return "-"
+    try:
+        obj: Any = json.loads(metadata_json)
+        text = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        text = metadata_json
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit] + " …"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Inspect episode records by text fragment, role, or workspace_id."
+        description="Inspect episodes in data/episodes.db by content/metadata/task_id/trace_id."
     )
-    parser.add_argument("needle", help="Text fragment to search in content/workspace_id/role")
-    parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to sqlite db")
-    parser.add_argument("--limit", type=int, default=20, help="Max rows to show")
-    parser.add_argument("--full", action="store_true", help="Show full content")
+    parser.add_argument(
+        "needle",
+        help="Text fragment to search in content/metadata_json/workspace_id/user_id",
+    )
+    parser.add_argument(
+        "--db",
+        default=str(DEFAULT_DB),
+        help="Path to sqlite db (default: data/episodes.db)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Max rows to show",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Show full content (not truncated)",
+    )
+    parser.add_argument(
+        "--role",
+        choices=["user", "assistant"],
+        help="Filter by role",
+    )
+    parser.add_argument(
+        "--workspace",
+        help="Filter by workspace_id prefix",
+    )
+    parser.add_argument(
+        "--user",
+        help="Filter by user_id",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -39,27 +82,59 @@ def main() -> int:
         return 1
 
     conn = connect(db_path)
-    rows = conn.execute(
-        """
-        SELECT id, ts, role, workspace_id, content
+
+    where_clauses = []
+    params: list[Any] = []
+
+    # needle по основным полям
+    where_clauses.append(
+        "("
+        "COALESCE(content, '') LIKE ? "
+        "OR COALESCE(metadata_json, '') LIKE ? "
+        "OR COALESCE(workspace_id, '') LIKE ? "
+        "OR COALESCE(user_id, '') LIKE ?"
+        ")"
+    )
+    params.extend([f"%{args.needle}%"] * 4)
+
+    if args.role:
+        where_clauses.append("role = ?")
+        params.append(args.role)
+
+    if args.workspace:
+        where_clauses.append("workspace_id LIKE ?")
+        params.append(f"{args.workspace}%")
+
+    if args.user:
+        where_clauses.append("user_id = ?")
+        params.append(args.user)
+
+    where_sql = " AND ".join(where_clauses)
+
+    sql = f"""
+        SELECT id, ts, user_id, workspace_id, role, content, metadata_json
         FROM episodes
-        WHERE COALESCE(content, '') LIKE ?
-           OR COALESCE(workspace_id, '') LIKE ?
-           OR COALESCE(role, '') LIKE ?
+        WHERE {where_sql}
         ORDER BY id DESC
         LIMIT ?
-        """,
-        (f"%{args.needle}%", f"%{args.needle}%", f"%{args.needle}%", args.limit),
-    ).fetchall()
+    """
+    params.append(args.limit)
+
+    rows = conn.execute(sql, params).fetchall()
 
     if not rows:
         print(f"No matches found for: {args.needle}")
         return 2
 
     for row in rows:
-        print(f"\n[id={row['id']}] ts={row['ts']} role={row['role']} workspace={row['workspace_id'] or '-'}")
+        print(
+            f"\n[id={row['id']}] ts={row['ts']} "
+            f"user_id={row['user_id']} workspace={row['workspace_id'] or '-'} "
+            f"role={row['role']}"
+        )
         content = row["content"] if args.full else shorten(row["content"])
         print(f"content: {content}")
+        print(f"metadata: {shorten_json(row['metadata_json'])}")
 
     print(f"\nDone. Rows shown: {len(rows)}")
     return 0

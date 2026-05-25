@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "episodes.db"
+DEFAULT_DB = ROOT / "data" / "episodes.db"
 
 BAD_PATTERNS = [
     "%error%",
@@ -37,12 +39,46 @@ def shorten(text: str | None, limit: int = 220) -> str:
     return text if len(text) <= limit else text[:limit] + " …"
 
 
+def shorten_json(metadata_json: str | None, limit: int = 220) -> str:
+    if not metadata_json:
+        return "-"
+    try:
+        obj: Any = json.loads(metadata_json)
+        text = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        text = metadata_json
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit] + " …"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="List suspicious/error-like episodes from episodes.db"
+        description="List suspicious/error-like episodes from data/episodes.db"
     )
-    parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to sqlite db")
-    parser.add_argument("--limit", type=int, default=20, help="Max rows to show")
+    parser.add_argument(
+        "--db",
+        default=str(DEFAULT_DB),
+        help="Path to sqlite db (default: data/episodes.db)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Max rows to show",
+    )
+    parser.add_argument(
+        "--role",
+        choices=["user", "assistant"],
+        help="Filter by role",
+    )
+    parser.add_argument(
+        "--workspace",
+        help="Filter by workspace_id prefix",
+    )
+    parser.add_argument(
+        "--user",
+        help="Filter by user_id",
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
@@ -52,17 +88,47 @@ def main() -> int:
 
     conn = connect(db_path)
 
-    where = " OR ".join(["LOWER(COALESCE(content, '')) LIKE ?"] * len(BAD_PATTERNS))
-    rows = conn.execute(
-        f"""
-        SELECT id, ts, role, workspace_id, content
+    # условия по паттернам
+    pattern_clause = "(" + " OR ".join(
+        [
+            "LOWER(COALESCE(content, '')) LIKE ?",
+            "LOWER(COALESCE(metadata_json, '')) LIKE ?",
+        ]
+    ) + ")"
+
+    where_clauses = [pattern_clause]
+    params: list[Any] = []
+
+    # для каждого BAD_PATTERN кладём два раза (content, metadata_json)
+    for p in BAD_PATTERNS:
+        lower = p.lower()
+        params.append(lower)
+        params.append(lower)
+
+    if args.role:
+        where_clauses.append("role = ?")
+        params.append(args.role)
+
+    if args.workspace:
+        where_clauses.append("workspace_id LIKE ?")
+        params.append(f"{args.workspace}%")
+
+    if args.user:
+        where_clauses.append("user_id = ?")
+        params.append(args.user)
+
+    where_sql = " AND ".join(where_clauses)
+
+    sql = f"""
+        SELECT id, ts, user_id, workspace_id, role, content, metadata_json
         FROM episodes
-        WHERE {where}
+        WHERE {where_sql}
         ORDER BY id DESC
         LIMIT ?
-        """,
-        [p.lower() for p in BAD_PATTERNS] + [args.limit],
-    ).fetchall()
+    """
+    params.append(args.limit)
+
+    rows = conn.execute(sql, params).fetchall()
 
     if not rows:
         print("No suspicious rows found.")
@@ -70,10 +136,11 @@ def main() -> int:
 
     for row in rows:
         print(
-            f"- id={row['id']} ts={row['ts']} role={row['role']} "
-            f"workspace={row['workspace_id'] or '-'}"
+            f"- id={row['id']} ts={row['ts']} user_id={row['user_id']} "
+            f"workspace={row['workspace_id'] or '-'} role={row['role']}"
         )
-        print(f"  content: {shorten(row['content'])}")
+        print(f"  content:  {shorten(row['content'])}")
+        print(f"  metadata: {shorten_json(row['metadata_json'])}")
 
     print(f"\nDone. Suspicious rows shown: {len(rows)}")
     return 0
