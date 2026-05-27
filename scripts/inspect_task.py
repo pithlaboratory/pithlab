@@ -39,11 +39,21 @@ def shorten_json(metadata_json: str | None, limit: int = 220) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Inspect episodes in data/episodes.db by content/metadata/task_id/trace_id."
+        description="Inspect episodes in data/episodes.db by text, task_id, trace_id, role, workspace, user."
     )
     parser.add_argument(
         "needle",
+        nargs="?",
+        default=None,
         help="Text fragment to search in content/metadata_json/workspace_id/user_id",
+    )
+    parser.add_argument(
+        "--task-id",
+        help="Exact task_id match from metadata_json",
+    )
+    parser.add_argument(
+        "--trace-id",
+        help="Exact trace_id match from metadata_json",
     )
     parser.add_argument(
         "--db",
@@ -76,6 +86,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if not args.needle and not args.task_id and not args.trace_id:
+        parser.error("Provide either needle, --task-id, or --trace-id")
+
     db_path = Path(args.db)
     if not db_path.exists():
         print(f"DB not found: {db_path}", file=sys.stderr)
@@ -86,16 +99,34 @@ def main() -> int:
     where_clauses = []
     params: list[Any] = []
 
-    # needle по основным полям
-    where_clauses.append(
-        "("
-        "COALESCE(content, '') LIKE ? "
-        "OR COALESCE(metadata_json, '') LIKE ? "
-        "OR COALESCE(workspace_id, '') LIKE ? "
-        "OR COALESCE(user_id, '') LIKE ?"
-        ")"
-    )
-    params.extend([f"%{args.needle}%"] * 4)
+    if args.needle:
+        where_clauses.append(
+            "("
+            "COALESCE(content, '') LIKE ? "
+            "OR COALESCE(metadata_json, '') LIKE ? "
+            "OR COALESCE(workspace_id, '') LIKE ? "
+            "OR COALESCE(user_id, '') LIKE ?"
+            ")"
+        )
+        params.extend([f"%{args.needle}%"] * 4)
+
+    if args.task_id:
+        where_clauses.append(
+            "("
+            "json_valid(COALESCE(metadata_json, '')) = 1 "
+            "AND json_extract(metadata_json, '$.task_id') = ?"
+            ")"
+        )
+        params.append(args.task_id)
+
+    if args.trace_id:
+        where_clauses.append(
+            "("
+            "json_valid(COALESCE(metadata_json, '')) = 1 "
+            "AND json_extract(metadata_json, '$.trace_id') = ?"
+            ")"
+        )
+        params.append(args.trace_id)
 
     if args.role:
         where_clauses.append("role = ?")
@@ -123,7 +154,8 @@ def main() -> int:
     rows = conn.execute(sql, params).fetchall()
 
     if not rows:
-        print(f"No matches found for: {args.needle}")
+        q = args.needle or args.task_id or args.trace_id
+        print(f"No matches found for: {q}")
         return 2
 
     for row in rows:
