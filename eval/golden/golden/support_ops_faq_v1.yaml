@@ -1,0 +1,44 @@
+id: support_ops_faq_v1
+description: "Пользователь спрашивает про процедуру эскалации; бот должен найти ответ в KB и дать структурированный ответ"
+
+input:
+  user_message: "Как эскалировать инцидент уровня P1?"
+  workspace_id: "ws_tg_test_001"
+  runtime_mode: "normal"
+  task_type: "support_resolution"
+
+expected:
+  trace_fields:
+    trace_id: present
+    task_id: present
+    workspace_id: "ws_tg_test_001"
+    runtime_mode: "normal"
+    task_type: "support_resolution"
+
+  eval_fields:
+    task_success_any_of:
+      - "success"
+      - "partial_success"
+    failure_class: null
+    cost_per_workflow_gt: 0
+    workflow_type: "support_resolution"
+
+  response_contains:
+    - "эскалац"
+    - "P1"
+
+  response_not_contains:
+    - "не знаю"
+    - "не найдено"
+
+  # Включить позже, когда Planner будет явно отдавать retriever evidence
+  # kb_snippets_used:
+  #   - contains: "P1 escalation procedure"
+
+governance:
+  refusals: []
+
+metadata:
+  priority: high
+  department: support_ops
+  billable_outcome: "resolved_ticket"

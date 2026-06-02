@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class TaskService:
     """
-    v1.6.6: minimal in-memory task service + SQLite persistence bridge.
+    v1.7.0: minimal in-memory task service + SQLite persistence bridge with DI support.
     Preserves domain logic while adding durable storage.
 
     Trace integration (v1.1 cleanup):
@@ -26,12 +26,37 @@ class TaskService:
     - Все trace-вызовы обёрнуты в try/except для graceful degradation
     - trace_id correlation: хранится в metadata_json и пробрасывается в task_traces
     - cost_estimate_usd пробрасывается в trace при завершении задачи
+
+    DI support (v1.7.0):
+    - Конструктор принимает memory_manager и artifact_service для совместимости с интерфейсами.
+    - Внутренняя логика остаётся независимой — параметры хранятся для будущей эволюции.
     """
 
-    def __init__(self, db_path: str = "data/episodes.db") -> None:
+    def __init__(
+        self,
+        db_path: str = "data/episodes.db",
+        memory_manager=None,
+        artifact_service=None,
+    ) -> None:
+        """
+        v1.7.0: расширенная сигнатура под DI из интерфейсов.
+
+        - db_path: путь к SQLite-хранилищу задач.
+        - memory_manager: опциональный менеджер памяти (используется внешним кодом).
+        - artifact_service: опциональный сервис артефактов (используется внешним кодом).
+
+        Параметры memory_manager / artifact_service храним для совместимости с
+        вызывающим кодом (интерфейсы, оркестратор), но внутренняя логика
+        TaskService остаётся независимой от них.
+        """
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         self._tasks: Dict[str, TaskRecord] = {}
         self.db_path = db_path
+
+        # Храним ссылки для внешнего использования / будущей эволюции
+        self.memory_manager = memory_manager
+        self.artifact_service = artifact_service
+
         self._ensure_table()
         self._trace_store = TraceStore(Path(db_path))
 

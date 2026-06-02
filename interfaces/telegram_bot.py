@@ -75,6 +75,11 @@ from core.memory.manager import get_memory
 from core.runtime.planner import RuntimePlanner, RuntimeMode
 from core.evolution.evaluator import evaluator
 from core.secrets import TG_TOKEN
+# ✅ FIX: Define TOKEN from imported secret
+TOKEN = TG_TOKEN
+if not TOKEN:
+    raise RuntimeError("Telegram token is empty or not loaded")
+
 from core.schemas import TaskState
 from core.services.task_service import TaskService
 from core.services.artifact_service import ArtifactService
@@ -89,13 +94,10 @@ try:
 except ImportError:
     def init_observability():
         return None
-
     def set_scope(**kwargs):
         return None
-
     def capture_event(*args, **kwargs):
         return None
-
     def capture_exception(*args, **kwargs):
         return None
 
@@ -140,7 +142,6 @@ try:
 except Exception as e:
     logger.warning("Observability init skipped: %s", e)
 
-
 if trace_service is None:
     logger.warning("TraceService not found — tracing disabled (non-critical)")
 
@@ -151,25 +152,38 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as f:
 
 INTERFACE_CFG = config.get("interface", {}) or {}
 PERSONA_CFG = config.get("persona", {}) or {}
-SYSTEM_MSG_CFG = INTERFACE_CFG.get("system_messages", {}) or {}
 GOVERNANCE_CFG = config.get("governance", {}) or {}
 BUDGET_CFG = GOVERNANCE_CFG.get("cognitive_budget", {}) or {}
 
-MAX_INPUT_CHARS = BUDGET_CFG.get("max_input_chars", MAX_INPUT_CHARS_DEFAULT)
-
-SHOW_PREFIX = INTERFACE_CFG.get("show_prefix", True)
-PREFIX_TEXT = INTERFACE_CFG.get("prefix_text", PERSONA_CFG.get("name", "Pith"))
-SYSTEM_PROMPT = PERSONA_CFG.get("system_prompt", "")
-
+# ✅ LEGACY KEY FALLBACK: support both snake_case and flat/camelCase keys
+SHOW_PREFIX = INTERFACE_CFG.get("show_prefix", INTERFACE_CFG.get("showprefix", True))
+PREFIX_TEXT = INTERFACE_CFG.get("prefix_text", INTERFACE_CFG.get("prefixtext", PERSONA_CFG.get("name", "Pith")))
+VOICE_MODE = INTERFACE_CFG.get("voice_mode", INTERFACE_CFG.get("voicemode", "runtime"))
 KNOWN_PREFIXES = INTERFACE_CFG.get(
     "known_prefixes_to_strip",
-    ["Pith:", "pith:", "PITH:"],
+    INTERFACE_CFG.get("knownprefixestostrip", ["Pith:", "pith:", "PITH:"]),
+)
+_loading_profile = INTERFACE_CFG.get("loading_profile", INTERFACE_CFG.get("loadingprofile", "default"))
+_loading_states_cfg = INTERFACE_CFG.get(
+    "loading_states",
+    INTERFACE_CFG.get("loadingstates", {}) or {},
+)
+PITH_LOADING_STEP_DELAYS = INTERFACE_CFG.get(
+    "loading_step_delays",
+    INTERFACE_CFG.get("loadingstepdelays", [1.5, 3.0]),
+)
+PITH_TYPING_PULSE_SEC = float(
+    INTERFACE_CFG.get("typing_pulse_sec", INTERFACE_CFG.get("typingpulsesec", 2.5))
+)
+SYSTEM_MSG_CFG = INTERFACE_CFG.get(
+    "system_messages",
+    INTERFACE_CFG.get("systemmessages", {}) or {},
 )
 
-VOICE_MODE = INTERFACE_CFG.get("voice_mode", "runtime")
-RUNTIME_ONLY_PREFIXES = ["Pith:", "pith:", "PITH:"]
+MAX_INPUT_CHARS = BUDGET_CFG.get("max_input_chars", MAX_INPUT_CHARS_DEFAULT)
 
-TOKEN = TG_TOKEN
+# ✅ persona.system_prompt with legacy fallback
+SYSTEM_PROMPT = PERSONA_CFG.get("system_prompt", PERSONA_CFG.get("systemprompt", ""))
 
 # === LOADING LOOP CONFIG ===
 DEFAULT_LOADING_STATES = [
@@ -181,19 +195,9 @@ DEFAULT_LOADING_STATES = [
 DEFAULT_LOADING_STEP_DELAYS = [2.4, 5.8, 9.5]
 DEFAULT_TYPING_PULSE_SEC = 3.5
 
-_loading_profile = INTERFACE_CFG.get("loading_profile", "default")
-_loading_states_cfg = INTERFACE_CFG.get("loading_states", {}) or {}
-
 PITH_LOADING_STATES = _loading_states_cfg.get(
     _loading_profile,
     _loading_states_cfg.get("default", DEFAULT_LOADING_STATES),
-)
-PITH_LOADING_STEP_DELAYS = INTERFACE_CFG.get(
-    "loading_step_delays",
-    DEFAULT_LOADING_STEP_DELAYS,
-)
-PITH_TYPING_PULSE_SEC = float(
-    INTERFACE_CFG.get("typing_pulse_sec", DEFAULT_TYPING_PULSE_SEC)
 )
 
 if len(PITH_LOADING_STATES) < 2:
@@ -216,7 +220,6 @@ def _fmt_sys(text: str) -> str:
     if SHOW_PREFIX and PREFIX_TEXT:
         return f"{PREFIX_TEXT}: {text}"
     return text
-
 
 MSG_START = _fmt_sys(
     SYSTEM_MSG_CFG.get(
@@ -281,10 +284,11 @@ TELEGRAM_DANGEROUS_DELETE_REPLY = _fmt_sys(
     "и я помогу найти подходящий способ."
 )
 
+# ✅ FIXED: Single definition (removed duplicate)
 TELEGRAM_INTERNAL_LEAK_REPLY = _fmt_sys(
-    "Запрошенная информация относится к внутренним служебным деталям системы и не предназначена для передачи через чат.\n\n"
-    "Я не могу показывать служебные инструкции, конфигурацию или внутренние маркеры — это стандартная мера защиты, не связанная с конкретным запросом.\n\n"
-    "Если у вас есть практический вопрос по работе системы — задайте его, и я постараюсь ответить в той мере, в какой это возможно."
+    "Запрошенная информация относится к скрытым служебным инструкциям, секретам или внутренним маркерам системы и не предназначена для передачи через чат.\n\n"
+    "Я не могу показывать скрытый system prompt, секреты доступа или внутренние служебные маркеры. Это стандартная мера защиты.\n\n"
+    "Если у вас практический вопрос по устройству системы, конфигу или логике работы — сформулируйте его прямо, и я отвечу в допустимых пределах."
 )
 
 # ✅ NEW: Data exfiltration refusal
@@ -295,10 +299,10 @@ TELEGRAM_DATA_EXFILTRATION_REPLY = _fmt_sys(
 )
 
 # ✅ NEW: Workspace isolation refusal
-TELEGRAM_INTERNAL_LEAK_REPLY = _fmt_sys(
-    "Запрошенная информация относится к скрытым служебным инструкциям, секретам или внутренним маркерам системы и не предназначена для передачи через чат.\n\n"
-    "Я не могу показывать скрытый system prompt, секреты доступа или внутренние служебные маркеры. Это стандартная мера защиты.\n\n"
-    "Если у вас практический вопрос по устройству системы, конфигу или логике работы — сформулируйте его прямо, и я отвечу в допустимых пределах."
+TELEGRAM_WORKSPACE_ISOLATION_REPLY = _fmt_sys(
+    "Я не могу показывать данные из других workspace'ов или передавать ваши данные во внешние каналы.\n\n"
+    "Изоляция workspace — это базовое правило безопасности: каждый пользователь работает только со своими данными.\n\n"
+    "Если вам нужно поделиться результатом — я могу помочь оформить его в безопасном внутреннем формате."
 )
 
 # ✅ FIXED: Single backslash in raw strings for regex metacharacters
@@ -338,7 +342,6 @@ TELEGRAM_WORKSPACE_ISOLATION_PATTERNS = [
     re.compile(r"\bworkspace[_\s-]?id\b", re.IGNORECASE),
 ]
 
-
 def is_telegram_dangerous_delete_request(text: str) -> bool:
     if not text:
         return False
@@ -347,7 +350,6 @@ def is_telegram_dangerous_delete_request(text: str) -> bool:
         return False
     return any(pattern.search(normalized) for pattern in TELEGRAM_DANGEROUS_DELETE_PATTERNS)
 
-
 def is_telegram_internal_leak_request(text: str) -> bool:
     if not text:
         return False
@@ -355,7 +357,6 @@ def is_telegram_internal_leak_request(text: str) -> bool:
     if not normalized:
         return False
     return any(pattern.search(normalized) for pattern in TELEGRAM_INTERNAL_LEAK_PATTERNS)
-
 
 # ✅ NEW: Data exfiltration detector
 def is_telegram_data_exfiltration_request(text: str) -> bool:
@@ -366,7 +367,6 @@ def is_telegram_data_exfiltration_request(text: str) -> bool:
         return False
     return any(pattern.search(normalized) for pattern in TELEGRAM_DATA_EXFILTRATION_PATTERNS)
 
-
 # ✅ NEW: Workspace isolation detector
 def is_telegram_workspace_isolation_request(text: str) -> bool:
     if not text:
@@ -375,7 +375,6 @@ def is_telegram_workspace_isolation_request(text: str) -> bool:
     if not normalized:
         return False
     return any(pattern.search(normalized) for pattern in TELEGRAM_WORKSPACE_ISOLATION_PATTERNS)
-
 
 # ✅ UPDATED: Added trace_service_instance parameter
 async def maybe_handle_governance_refusal(
@@ -538,7 +537,6 @@ async def maybe_handle_governance_refusal(
 
     return False
 
-
 # === CORE RUNTIME BINDINGS ===
 memory = get_memory()
 artifact_service = ArtifactService()
@@ -561,19 +559,16 @@ planner = RuntimePlanner(
     task_service=task_service,
 )
 
-
 def get_default_workspace_id_for_user(user_id: str) -> str:
     return f"ws_tg_{user_id}"
-
 
 def enforce_voice_mode(text: str) -> str:
     if VOICE_MODE != "runtime":
         return text
-    for prefix in RUNTIME_ONLY_PREFIXES:
+    for prefix in KNOWN_PREFIXES:
         if text.startswith(prefix):
             return text[len(prefix):].lstrip()
     return text
-
 
 def format_response_with_prefix(text: str, strip_known_prefixes: bool = True) -> str:
     if not text:
@@ -585,7 +580,6 @@ def format_response_with_prefix(text: str, strip_known_prefixes: bool = True) ->
                 break
     return enforce_voice_mode(text) if VOICE_MODE == "runtime" else text
 
-
 # === OUTPUT SANITIZATION ===
 INTERNAL_RUNTIME_PREFIXES = (
     "SKIP:",
@@ -595,12 +589,10 @@ INTERNAL_RUNTIME_PREFIXES = (
     "MEMORY_SKIP:",
 )
 
-
 def strip_internal_runtime_lines(text: str) -> str:
     """Remove internal orchestration/debug lines from user-facing response."""
     if not text:
         return text
-
     cleaned_lines: List[str] = []
     for line in str(text).splitlines():
         stripped = line.strip()
@@ -608,10 +600,7 @@ def strip_internal_runtime_lines(text: str) -> str:
             logger.warning("Dropping internal runtime line from Telegram output: %s", stripped)
             continue
         cleaned_lines.append(line)
-
-    # ✅ FIXED: Single backslash for newline character
     return "\n".join(cleaned_lines).strip()
-
 
 def normalize_user_visible_response(text: str) -> str:
     """Apply all user-facing normalizations: prefix strip + internal marker filter."""
@@ -619,6 +608,89 @@ def normalize_user_visible_response(text: str) -> str:
     text = strip_internal_runtime_lines(text)
     return text.strip()
 
+# ✅ NEW: Self-description detector for Pith capability queries
+def is_pith_self_description_request(text: str) -> bool:
+    """Detect queries about Pith's own capabilities, architecture, or status."""
+    if not text:
+        return False
+    text_lower = text.lower().strip()
+    
+    patterns = [
+        "что реально работает",
+        "что работает в pith",
+        "что умеет pith",
+        "какие инструменты доступны",
+        "какие tools доступны",
+        "архитектура pith",
+        "статус pith",
+        "maturity pith",
+        "production-ready",
+        "vector memory",
+        "векторная память",
+        "routing pith",
+        "memory pith",
+        "traces pith",
+        "governance pith",
+        "capabilities pith",
+        "pith can",
+        "pith умеет",
+        "pith поддерживает",
+    ]
+    return any(p in text_lower for p in patterns)
+
+def inject_self_report_guard(text: str) -> str:
+    """Wrap user query with strict self-report instructions for Pith capability questions."""
+    return (
+        "STRICT PITH SELF-REPORT MODE:\n"
+        "Describe only what is confirmed by the current config, code, logs, or explicit runtime behavior in this dialogue.\n"
+        "Do not invent tools, providers, storage backends, or capabilities.\n"
+        "If something is only present in config, treat it as IN PROGRESS unless runtime behavior confirms it.\n"
+        "If something is not explicitly confirmed, label it as HYPOTHESIS or say it is not confirmed.\n"
+        "Always use [STATUS: IMPLEMENTED], [STATUS: IN PROGRESS], [STATUS: DESIGNED ONLY], or [STATUS: HYPOTHESIS] markers.\n\n"
+        f"User request: {text}"
+    )
+
+# ✅ NEW: Response sanitizer for self-report queries
+def sanitize_pith_self_report(text: str, config: dict) -> str:
+    """Remove or flag capability claims not confirmed by current config/runtime."""
+    if not text:
+        return text
+    
+    tools_cfg = config.get("tools", {}) or {}
+    code_exec_cfg = tools_cfg.get("code_execution", {}) or {}
+    web_cfg = tools_cfg.get("web_search", {}) or {}
+    
+    code_exec_enabled = bool(code_exec_cfg.get("enabled", False))
+    web_provider = web_cfg.get("provider")
+    
+    forbidden_claims = []
+    
+    if not code_exec_enabled:
+        forbidden_claims.extend([
+            "run python", "execute python", "изолированное выполнение",
+            "python sandbox", "code execution enabled",
+        ])
+    
+    if web_provider and web_provider not in text.lower():
+        # Don't claim specific providers if not configured
+        if web_provider == "tavily":
+            forbidden_claims.extend(["duckduckgo", "serpapi", "google search api"])
+        elif web_provider == "duckduckgo":
+            forbidden_claims.extend(["tavily", "serpapi"])
+    
+    if not forbidden_claims:
+        return text
+    
+    lines = []
+    for line in str(text).splitlines():
+        lower = line.lower()
+        if any(claim in lower for claim in forbidden_claims):
+            # Replace unconfirmed claim with status marker
+            lines.append("[STATUS: HYPOTHESIS] Capability claim hidden — not confirmed by current config/runtime.")
+            continue
+        lines.append(line)
+    
+    return "\n".join(lines).strip()
 
 def detect_runtime_mode_ui(text: str) -> RuntimeMode:
     text_lower = text.lower()
@@ -636,13 +708,11 @@ def detect_runtime_mode_ui(text: str) -> RuntimeMode:
         return RuntimeMode.DIAGNOSTICS
     return RuntimeMode.NORMAL
 
-
 def compute_goal_tags(runtime_mode: RuntimeMode) -> List[str]:
     goal_tags: List[str] = []
     if runtime_mode == RuntimeMode.DIAGNOSTICS:
         goal_tags.append("g_tactical_self_diagnostics")
     return goal_tags
-
 
 def feedback_keyboard(task_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -652,17 +722,14 @@ def feedback_keyboard(task_id: str) -> InlineKeyboardMarkup:
         ]]
     )
 
-
 def fmt_loading(text: str) -> str:
     return f"⋯ {text}"
-
 
 async def send_typing_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
     except Exception as e:
         logger.debug("Failed to send typing action: %s", e)
-
 
 async def safe_reply(message, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None, retries: int = 3) -> Optional[Any]:
     try:
@@ -682,7 +749,6 @@ async def safe_reply(message, text: str, reply_markup: Optional[InlineKeyboardMa
             text = text.encode("ascii", errors="replace").decode("ascii")
             return await message.reply_text(text, reply_markup=reply_markup)
     return None
-
 
 async def safe_callback_reply(query, text: str, reply_markup: Optional[InlineKeyboardMarkup] = None, retries: int = 3) -> Optional[Any]:
     if not query or not query.message:
@@ -705,14 +771,12 @@ async def safe_callback_reply(query, text: str, reply_markup: Optional[InlineKey
             return await query.message.reply_text(text, reply_markup=reply_markup)
     return None
 
-
 async def send_loading_placeholder(message, text: str):
     try:
         return await safe_reply(message, fmt_loading(text))
     except Exception as e:
         logger.debug("Failed to send loading placeholder: %s", e)
         return None
-
 
 async def edit_loading_placeholder(msg, text: str) -> bool:
     if not msg:
@@ -723,7 +787,6 @@ async def edit_loading_placeholder(msg, text: str) -> bool:
     except Exception as e:
         logger.debug("Failed to edit loading placeholder: %s", e)
         return False
-
 
 async def pith_loading_loop(
     context: ContextTypes.DEFAULT_TYPE,
@@ -749,7 +812,6 @@ async def pith_loading_loop(
             await asyncio.wait_for(stop_event.wait(), timeout=0.35)
         except asyncio.TimeoutError:
             continue
-
 
 # === GLOBAL ERROR HANDLER ===
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -779,7 +841,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception as e:
         logger.debug("Failed to send error notification to user: %s", e)
 
-
 # === HANDLERS ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
@@ -787,13 +848,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_typing_safe(context, update.effective_chat.id)
     await safe_reply(update.message, MSG_START)
 
-
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     await send_typing_safe(context, update.effective_chat.id)
     await safe_reply(update.message, MSG_ABOUT)
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -942,10 +1001,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ui_mode_hint = detect_runtime_mode_ui(text)
 
+        # ✅ Inject self-report guard for Pith capability queries
+        effective_text = inject_self_report_guard(text) if is_pith_self_description_request(text) else text
+
         # ✅ FIX: Pass trace_id to Planner for correlation
         result = await planner.plan_and_answer(
             user_id=user_id,
-            text=text,
+            text=effective_text,  # ✅ Use guarded text for self-report queries
             workspace_id=workspace_id,
             task_id=task_id,
             session_id=session_id,
@@ -1078,6 +1140,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "model_id": result.get("model_id"),
         "cost_usd": result.get("cost", 0.0),
     })
+    
+    # ✅ Sanitize self-report responses to remove unconfirmed capability claims
+    if is_pith_self_description_request(text):
+        raw_response = sanitize_pith_self_report(raw_response, config)
+    
     prefixed_response = format_response_with_prefix(raw_response, strip_known_prefixes=True)
     response = normalize_user_visible_response(raw_response)
     internal_markers_stripped = response != prefixed_response
@@ -1171,7 +1238,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     task_service.update_status(task_id, TaskState.completed)
 
-
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик фидбека (👍/👎) — тихое подтверждение, лог для наблюдаемости."""
     query = update.callback_query
@@ -1226,7 +1292,6 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info("👍👎 Feedback recorded: %s (task %s, user %s)", feedback_value, task_id, user_id)
 
-
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not context.args:
         await safe_reply(update.message, MSG_SEARCH_USAGE)
@@ -1239,6 +1304,14 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(update.message, MSG_SEARCH_USAGE)
         return
     query = " ".join(args)
+    
+    # ✅ Check if web_search is enabled in config
+    tools_cfg = config.get("tools", {}) or {}
+    web_search_cfg = tools_cfg.get("web_search", {}) or {}
+    if not web_search_cfg.get("enabled", False):
+        await safe_reply(update.message, _fmt_sys("Web search is disabled in current config."))
+        return
+    
     await send_typing_safe(context, update.effective_chat.id)
     try:
         if ToolRegistry is not None:
@@ -1257,7 +1330,6 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         logger.exception("Search command failed")
         await safe_reply(update.message, MSG_SEARCH_FAILED)
-
 
 # === CONFIG VALIDATION ===
 def _validate_interface_config() -> bool:
@@ -1282,7 +1354,6 @@ def _validate_interface_config() -> bool:
         return False
     return True
 
-
 # === ENTRY POINT ===
 def build_application() -> Application:
     request = HTTPXRequest(
@@ -1293,7 +1364,7 @@ def build_application() -> Application:
     )
     app = (
         ApplicationBuilder()
-        .token(TOKEN)
+        .token(TOKEN)  # ✅ Now TOKEN is defined
         .request(request)
         .build()
     )
@@ -1304,7 +1375,6 @@ def build_application() -> Application:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
     return app
-
 
 if __name__ == "__main__":
     if not _validate_interface_config():
