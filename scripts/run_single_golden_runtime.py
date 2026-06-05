@@ -232,7 +232,8 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Example:\n"
             "  python scripts/run_single_golden_runtime.py eval/golden/support_ops_faq_v1.yaml\n"
-            "  python scripts/run_single_golden_runtime.py --dry-run eval/golden/research_competitor_brief_v1.yaml"
+            "  python scripts/run_single_golden_runtime.py --dry-run eval/golden/research_competitor_brief_v1.yaml\n"
+            "  python scripts/run_single_golden_runtime.py --via-planner eval/golden/support_ops_faq_v1.yaml"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -246,7 +247,121 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate and print payload without calling the LLM",
     )
+    parser.add_argument(
+        "--via-planner",
+        action="store_true",
+        help="Route through RuntimePlanner (creates TaskService record + Evaluator automatically)",
+    )
     return parser.parse_args()
+
+
+# ── Planner path ───────────────────────────────────────────────────────────
+
+def run_through_planner(golden: dict) -> Dict[str, Any]:
+    """
+    Run golden through RuntimePlanner.
+    Planner handles TaskService.create_task(), LLM call, Evaluator, and saving.
+    """
+    golden_id: str = golden["golden_id"]
+    user_query: str = clean_multiline_text(golden.get("inputs", {}).get("user_query", ""))
+    entrypoint: dict = golden.get("entrypoint", {})
+    task_type: str = entrypoint.get("task_type", "general")
+    expected_outcome: dict = golden.get("expected_eval_outcome", {})
+
+    from core.runtime.planner import RuntimePlanner
+    from core.entities.workspace import Workspace
+    from core.memory.manager import MemoryManager
+    from core.services.task_service import TaskService
+
+    logger.info("=== Via Planner path ===")
+
+    # Minimal dependencies for Planner
+    memory_mgr = MemoryManager()
+    planner = RuntimePlanner(
+        memory_manager=memory_mgr,
+        system_prompt="You are a helpful Support/Ops assistant for Pith.",
+        task_service=TaskService(),
+    )
+
+    trace_id = f"TRACE_{golden_id}_{uuid.uuid4().hex[:12]}"
+    workspace_id = "eval_single_golden"
+
+    import asyncio
+    result = asyncio.run(planner.plan_and_answer(
+        user_id="golden_eval_runner",
+        text=user_query,
+        workspace_id=workspace_id,
+        trace_id=trace_id,
+        workflow=golden.get("workflow_type"),
+        golden_id=golden_id,
+        runtime_mode="eval",
+        task_type="golden_runtime",
+    ))
+
+    planner_task_id = result.get("task_id", "unknown")
+    planner_trace_id = result.get("trace_id", trace_id)
+    evaluation = result.get("evaluation")
+
+    if evaluation is None:
+        logger.warning(
+            "Planner returned no evaluation for golden '%s' — falling back to direct Evaluator call",
+            golden_id,
+        )
+        from core.evolution.evaluator import evaluator as eval_engine
+        evaluation = eval_engine.evaluate_response(
+            task_id=planner_task_id,
+            user_id="golden_eval_runner",
+            response=result.get("response", ""),
+            model=result.get("model_id", "unknown"),
+            tokens=result.get("tokens_prompt", 0) + result.get("tokens_completion", 0),
+            cost=result.get("cost", 0.0),
+            user_feedback=None,
+            context_used=result.get("context_used"),
+            task_type=task_type,
+        )
+        evaluation["trace_id"] = planner_trace_id
+        evaluation["workspace_id"] = workspace_id
+
+    # Compare with expected outcome
+    expected_task_success: str = expected_outcome.get("task_success", "success")
+    min_required_score: float = expected_outcome.get("min_quality_score", 0.0)
+    actual_success: str = evaluation.get("task_success", "failure")
+    quality_score: float = evaluation.get("quality_score", 0.0)
+    passed: bool = (
+        actual_success == expected_task_success
+        and quality_score >= min_required_score
+        and not evaluation.get("policy_violation", False)
+    )
+
+    run_artifact: Dict[str, Any] = {
+        "golden_id": golden_id,
+        "department": golden.get("department", "unknown"),
+        "workflow_type": golden.get("workflow_type", "unknown"),
+        "autonomy_tier": golden.get("autonomy_tier", "unknown"),
+        "payload": {
+            "trace_id": planner_trace_id,
+            "task_id": planner_task_id,
+            "workspace_id": workspace_id,
+            "runtime_mode": entrypoint.get("runtime_mode", "normal"),
+            "task_type": task_type,
+            "user_query": user_query,
+            "initial_context_count": len(golden.get("inputs", {}).get("initial_context", [])),
+        },
+        "evaluation_record": evaluation,
+        "_meta": {
+            "script": "run_single_golden_runtime.py",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "passed": passed,
+            "expected_task_success": expected_task_success,
+            "min_required_score": min_required_score,
+            "model_used": result.get("model_id", "unknown"),
+            "cost_usd": result.get("cost", 0.0),
+            "tokens_total": result.get("tokens_prompt", 0) + result.get("tokens_completion", 0),
+            "notes": "Phase 2: via RuntimePlanner (TaskService + Evaluator integrated)",
+        },
+    }
+
+    return run_artifact
 
 
 def main() -> None:
@@ -288,9 +403,13 @@ def main() -> None:
         print("\n✅ Dry-run complete. No LLM call was made.")
         sys.exit(0)
 
-    # ── Run through real runtime ───────────────────────────────────────
-    logger.info("Starting real runtime execution for '%s' ...", golden["golden_id"])
-    run_artifact = run_golden_through_runtime(golden)
+    # ── Route: via Planner or direct ───────────────────────────────────
+    if args.via_planner:
+        logger.info("Routing golden '%s' through RuntimePlanner ...", golden["golden_id"])
+        run_artifact = run_through_planner(golden)
+    else:
+        logger.info("Starting direct runtime execution for '%s' ...", golden["golden_id"])
+        run_artifact = run_golden_through_runtime(golden)
 
     # ── Write output ───────────────────────────────────────────────────
     output_path = generate_eval_run_path(run_artifact["golden_id"])

@@ -110,6 +110,10 @@ class TaskService:
         input_text: str,
         intent_type: Optional[str] = None,
         trace_id: Optional[str] = None,
+        runtime_mode: Optional[str] = None,
+        task_type: Optional[str] = None,
+        workflow: Optional[str] = None,
+        golden_id: Optional[str] = None,
     ) -> TaskRecord:
         task = TaskRecord(
             workspace_id=workspace_id,
@@ -124,6 +128,14 @@ class TaskService:
             task.metadata["intent_type"] = intent_type
         if trace_id:
             task.metadata["trace_id"] = trace_id
+        if runtime_mode:
+            task.metadata["runtime_mode"] = runtime_mode
+        if task_type:
+            task.metadata["task_type"] = task_type
+        if workflow:
+            task.metadata["workflow"] = workflow
+        if golden_id:
+            task.metadata["golden_id"] = golden_id
 
         self._tasks[task.task_id] = task
 
@@ -163,7 +175,7 @@ class TaskService:
                 task_id=task.task_id,
                 workspace_id=task.workspace_id,
                 runtime_mode=task.metadata.get("runtime_mode"),
-                task_type=task.metadata.get("intent_type"),
+                task_type=task.metadata.get("task_type"),
                 runtime_config_ver=task.metadata.get("runtime_config_ver"),
                 trace_id=task.metadata.get("trace_id"),
             )
@@ -318,6 +330,11 @@ class TaskService:
                     duration_ms=duration_ms,
                     cost_estimate_usd=task.cost_usd,
                 )
+
+                # Update score_final if available in metadata
+                score = task.metadata.get("quality_score")
+                if score is not None:
+                    self._trace_store.evaluator_score(task.task_id, score)
 
             elif new_status in (TaskState.failed, TaskState.cancelled):
                 duration_ms = None

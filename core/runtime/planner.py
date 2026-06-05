@@ -9,13 +9,19 @@ Governing docs:
 - docs/PITH_RUNTIME_CONTEXT_PROTOCOL_V1.md
 """
 import asyncio
+import json
 import logging
+import os
+import uuid
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 from core.cognition.router import call_llm, normalize_router_mode
 from core.orchestrator import orchestrator
 from core.context_assembler import ContextAssembler, RuntimeMode
 from core.goal_model import get_goal_model
+from core.evolution.evaluator import Evaluator
+from core.schemas import TaskState
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +85,99 @@ class RuntimePlanner:
             task_service=task_service,
         )
         self.goal_model = get_goal_model()
+        self.evaluator = Evaluator()
+        self._eval_output_dir = "output/eval_runs"
+
+    def _save_evaluation(self, result: Dict[str, Any], trace_id: str, user_id: str, original_text: str) -> Dict[str, Any]:
+        """
+        Run evaluator on result and save EvaluationRecord to output/eval_runs/<trace_id>.json.
+        Returns result dict with "evaluation" key added. Safe — wrapped in try/except.
+        """
+        try:
+            os.makedirs(self._eval_output_dir, exist_ok=True)
+            eval_record = self.evaluator.evaluate_response(
+                task_id=result.get("task_id", "unknown"),
+                user_id=user_id,
+                response=result.get("response", ""),
+                model=result.get("model_id", "unknown"),
+                tokens=result.get("tokens_prompt", 0) + result.get("tokens_completion", 0),
+                cost=result.get("cost", 0.0),
+                user_feedback=None,
+                context_used=result.get("context_used"),
+                task_type=result.get("task_type", "general"),
+            )
+            # Add trace_id and workspace_id (caller's responsibility per Evaluator contract)
+            eval_record["trace_id"] = trace_id
+            eval_record["workspace_id"] = result.get("workspace_id", "default")
+
+            eval_path = os.path.join(self._eval_output_dir, f"{trace_id}.json")
+            with open(eval_path, "w") as f:
+                json.dump(eval_record, f, ensure_ascii=False, indent=2)
+
+            result["evaluation"] = eval_record
+            logger.info(
+                "RuntimePlanner: saved eval record for task %s (score=%.2f) to %s",
+                eval_record.get("task_id"),
+                eval_record.get("quality_score", 0.0),
+                eval_path,
+            )
+        except Exception:
+            logger.exception("RuntimePlanner: evaluator failed — continuing without eval record")
+
+        # Finalize task via TaskService (attach execution metadata + update status)
+        self._apply_execution_result(result)
+        return result
+
+    def _apply_execution_result(self, result: Dict[str, Any]) -> None:
+        """Attach execution metadata and mark task completed/failed in TaskService. Safe — try/except."""
+        task_id = result.get("task_id")
+        if not task_id or self.task_service is None:
+            return
+        try:
+            model_id = result.get("model_id", "unknown")
+            tokens_prompt = result.get("tokens_prompt", 0)
+            tokens_completion = result.get("tokens_completion", 0)
+            cost = result.get("cost", 0.0)
+            trace_id = result.get("trace_id")
+
+            self.task_service.attach_execution_result(
+                task_id=task_id,
+                model_id=model_id,
+                model_name=result.get("model_name"),
+                model_lane=None,
+                cost_usd=cost,
+                tokens_prompt=tokens_prompt,
+                tokens_completion=tokens_completion,
+                latency_ms=0,
+                trace_id=trace_id,
+            )
+
+            # Add quality_score to metadata for score_final in trace
+            eval_rec = result.get("evaluation")
+            if eval_rec:
+                quality_score = eval_rec.get("quality_score")
+                if quality_score is not None:
+                    # We access the task record directly through TaskService's internal dict
+                    task = self.task_service._tasks.get(task_id)
+                    if task:
+                        task.metadata["quality_score"] = quality_score
+
+            # Determine whether the task was successful or failed
+            response = result.get("response", "")
+            is_error = (
+                result.get("model_id") == "error"
+                or response.startswith("Не удалось")
+                or response.startswith("LLM error")
+            )
+            new_status = TaskState.failed if is_error else TaskState.completed
+            self.task_service.update_status(task_id, new_status)
+
+            logger.info(
+                "RuntimePlanner: finalized task %s -> %s (cost=%.6f, tokens=%d+%d)",
+                task_id, new_status.value, cost, tokens_prompt, tokens_completion,
+            )
+        except Exception:
+            logger.exception("RuntimePlanner: task finalization failed — continuing")
 
     def _ensure_router_mode(self, mode: Optional[str], text: str) -> str:
         if mode is not None:
@@ -118,18 +217,74 @@ class RuntimePlanner:
         task_id: Optional[str] = None,
         session_id: Optional[str] = None,
         trace_id: Optional[str] = None,  # ✅ Added for correlation
+        workflow: Optional[str] = None,
+        golden_id: Optional[str] = None,
+        runtime_mode: Optional[str] = None,
+        task_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Workspace-native entry point.
         Phase 1: heuristic routing + structured context assembly.
         Phase 2: protocol-driven pruning, intent classification, agent routing.
+
+        Args:
+            user_id: User identifier.
+            text: Input query text.
+            workspace_id: Workspace scope.
+            task_id: Optional pre-defined task ID.
+            session_id: Optional session for context assembly.
+            trace_id: Optional trace ID for correlation.
+            workflow: Optional workflow name (e.g. 'support_resolution').
+            golden_id: Optional golden test ID (e.g. 'support_ops_faq_v1').
         """
+        # 0. Generate trace_id if not provided externally
+        if trace_id is None:
+            trace_id = uuid.uuid4().hex
+
+        # 0a. Determine runtime_mode and task_type — prefer caller-provided values
+        runtime_mode_str = runtime_mode or "normal"
+        task_type_str = task_type or self._detect_task_type(text)
+
+        # 0b. Create task in TaskService if available
+        planned_task_id = task_id or uuid.uuid4().hex[:12]
+        if self.task_service is not None:
+            try:
+                task_record = self.task_service.create_task(
+                    workspace_id=workspace_id or "default",
+                    user_id=user_id,
+                    source_interface="system",
+                    input_text=text,
+                    intent_type=task_type_str,
+                    trace_id=trace_id,
+                    runtime_mode=runtime_mode_str,
+                    task_type=task_type_str,
+                    workflow=workflow,
+                    golden_id=golden_id,
+                )
+                planned_task_id = task_record.task_id
+                logger.info(
+                    "RuntimePlanner: created task %s with trace_id %s",
+                    planned_task_id, trace_id,
+                )
+            except Exception:
+                logger.exception(
+                    "RuntimePlanner: TaskService.create_task failed — continuing without task record",
+                )
+
+        # Store task_id, user_id, original_text, workspace_id for downstream flows
+        self._current_planned_task_id = planned_task_id
+        self._current_user_id = user_id
+        self._current_original_text = text
+        self._current_workspace_id = workspace_id or "default"
+        self._current_task_type = task_type_str
+        self._current_runtime_mode = runtime_mode_str
+
         # 1. Сборка контекста (workspace_id пробрасывается в Assembler)
         assembled = self.context_assembler.build(
             query=text,
             user_id=user_id,
             workspace_id=workspace_id,
-            task_id=task_id,
+            task_id=planned_task_id,
             session_id=session_id,
             system_prompt=self.system_prompt,
         )
@@ -196,7 +351,7 @@ class RuntimePlanner:
         try:
             agent_results = await orchestrator.run_async(prompt)
             response = orchestrator.synthesize(agent_results)
-            return {
+            result = {
                 "response": response,
                 "model_id": "orchestrator",
                 "model_name": "Orchestrator",
@@ -211,7 +366,10 @@ class RuntimePlanner:
                 "goal_tags": goal_tags,
                 "execution_path": "orchestrated",
                 "trace_id": trace_id,  # ✅ Returned for correlation
+                "task_id": self._current_planned_task_id,
+                "workspace_id": self._current_workspace_id,
             }
+            return self._save_evaluation(result, trace_id, self._current_user_id, self._current_original_text)
         except Exception as e:
             logger.exception("Orchestrator flow failed")
             return {
@@ -229,6 +387,7 @@ class RuntimePlanner:
                 "goal_tags": goal_tags,
                 "execution_path": "orchestrated",
                 "trace_id": trace_id,  # ✅ Returned even on error
+                "task_id": self._current_planned_task_id,
             }
 
     async def _run_direct_llm_flow(
@@ -260,7 +419,7 @@ class RuntimePlanner:
             )
 
             usage = result.get("usage", {}) or {}
-            return {
+            direct_result = {
                 "response": result.get("content", ""),
                 "model_id": result.get("model", "unknown"),
                 "model_name": result.get("model", "unknown"),
@@ -275,7 +434,10 @@ class RuntimePlanner:
                 "goal_tags": goal_tags or [],
                 "execution_path": "direct",
                 "trace_id": trace_id,  # ✅ Returned for correlation
+                "task_id": self._current_planned_task_id,
+                "workspace_id": self._current_workspace_id,
             }
+            return self._save_evaluation(direct_result, trace_id, self._current_user_id, self._current_original_text)
         except Exception as e:
             logger.exception("Direct LLM flow failed")
             return {
@@ -293,4 +455,5 @@ class RuntimePlanner:
                 "goal_tags": goal_tags or [],
                 "execution_path": "direct",
                 "trace_id": trace_id,  # ✅ Returned even on error
+                "task_id": self._current_planned_task_id,
             }
