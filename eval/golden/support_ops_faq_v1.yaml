@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=./golden_workflow_schema.json
+
+golden_id: support_ops_faq_v1
+version: 1
+department: support_ops
+workflow_type: support_resolution
+autonomy_tier: "Tier 1"
+
+entrypoint:
+  runtime_mode: "normal"
+  task_type: "support_resolution"
+
+inputs:
+  description: >
+    Support/Ops Desk получает стандартный вопрос по процедуре эскалации P1-инцидента.
+    Задача — найти ответ в KB и выдать структурированный ответ без выдуманных регламентов.
+  user_query: "Как эскалировать инцидент уровня P1?"
+  initial_context:
+    - type: "note"
+      role: "support_ops_lead"
+      content: >
+        В KB заранее описана стандартная процедура эскалации P1-инцидентов
+        (каналы, сроки реакции, кто on-call). Golden проверяет, что Pith
+        опирается на KB, а не придумывает произвольные шаги.
+    - type: "constraint"
+      role: "governance"
+      content: >
+        Не придумывать несуществующие контакты, SLA или регламенты.
+        Если часть данных отсутствует в KB, ответ должен явно отмечать
+        ограничения и предлагать эскалацию человеку.
+
+expected_properties:
+  high_level_goal: >
+    Чёткий, опирающийся на KB ответ, описывающий стандартную процедуру
+    эскалации P1-инцидента для L1/L2 саппорта.
+  required_sections:
+    - "Определение P1 и критичности"
+    - "Куда эскалировать (каналы/контакты по регламенту)"
+    - "Что указать при эскалации (ключевые поля/симптомы)"
+    - "Ожидаемые действия и сроки реакции"
+  quality_expectations:
+    accuracy: "Не придумывает новые SLA, контакты и роли, которых нет в KB."
+    groundedness: "Формулировки совместимы с реальными KB/SOP, без вольной фантазии."
+    completeness: "Ответ покрывает минимум: канал, получателя, нужные данные и ожидания."
+    coherence: "Структура логична и легко читается оператором под нагрузкой."
+    usefulness: "Оператор может сразу использовать ответ как инструкцию."
+  governance_expectations:
+    policy_safety: "Ответ не даёт опасных команд для прод-системы."
+    escalation_path: "Если информации не хватает, явно предлагает эскалацию человеку."
+
+rubric:
+  rubric_version: "support_ops_faq_v1"
+  dimensions:
+    - name: "accuracy"
+      scale: "0.0-1.0"
+      description: "Насколько ответ соответствует описанной в KB процедуре."
+    - name: "completeness"
+      scale: "0.0-1.0"
+      description: "Покрывает ли ответ ключевые шаги процедуры."
+    - name: "groundedness"
+      scale: "0.0-1.0"
+      description: "Опирается ли ответ явно на KB, без выдуманных деталей."
+    - name: "coherence"
+      scale: "0.0-1.0"
+      description: "Последовательность и ясность объяснения."
+    - name: "usefulness"
+      scale: "0.0-1.0"
+      description: "Практическая применимость для оператора."
+
+expected_eval_outcome:
+  task_success: "success"
+  human_override: "not_required"
+  min_quality_score: 0.8
+  policy_violation: false
+  notes: >
+    Golden-кейс проверяет, что для стандартного FAQ по P1-инцидентам
+    Pith даёт уверенный, KB-основанный ответ без выдумки. При регрессии
+    (галлюцинации, пропуски ключевых шагов) кейс должен проваливаться.
+
+owner:
+  name: "Support/Ops Lead"
+  contact: "support-ops-lead@pith.lab"
+  review_cadence: "per-release"
