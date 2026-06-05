@@ -643,6 +643,30 @@ The v1 goal is disciplined measurement, not evaluation perfection.
 
 ---
 
+## 15a. Golden Eval Trace Inspection
+
+For golden runtime evaluations executed via `scripts/run_single_golden_runtime.py --via-planner`, every run is persisted into `episodes.db` (`tasks` + `task_traces`).
+
+A small CLI helper is available:
+
+```bash
+# list recent golden tasks
+python scripts/inspect_golden_traces.py tasks --limit 5
+
+# list recent golden traces
+python scripts/inspect_golden_traces.py traces --limit 5
+
+# inspect all runs for a specific golden
+python scripts/inspect_golden_traces.py golden --golden-id support_ops_faq_v1
+
+# inspect a run by trace_id
+python scripts/inspect_golden_traces.py trace --trace-id TRACE_support_ops_faq_v1_ae846f881426
+```
+
+This makes it easy to correlate evaluation JSON blobs with TaskStore (`tasks`) and TraceStore (`task_traces`), and to verify that `runtime_mode=eval`, `task_type=golden_runtime`, and `quality_score` are set end-to-end.
+
+---
+
 ## 16. Integration Points
 
 This document should influence:
