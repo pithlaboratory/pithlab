@@ -151,7 +151,7 @@ class Orchestrator:
             score = self._score_output(name, text)
             ranked.append((name, text, score))
 
-        ranked.sort(key=lambda item: item, reverse=True)
+        ranked.sort(key=lambda item: item[2], reverse=True)
         return ranked
 
     def synthesize(self, agent_outputs: Dict[str, str]) -> str:

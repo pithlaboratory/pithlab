@@ -10,14 +10,17 @@ class BaseAgent:
 
     def process(self, query: str) -> str:
         """Синхронный вызов (для совместимости)."""
-        prompt = f"{self.role_prompt}\n\nЗапрос: {query}"
-        return call_llm(prompt)
+        result = call_llm(prompt=query, system_prompt=self.role_prompt)
+        return result.get("content", "")
 
     async def process_async(self, query: str) -> str:
         """Асинхронный вызов."""
-        prompt = f"{self.role_prompt}\n\nЗапрос: {query}"
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, call_llm, prompt)
+        result = await loop.run_in_executor(
+            None,
+            lambda: call_llm(prompt=query, system_prompt=self.role_prompt),
+        )
+        return result.get("content", "")
 
     def use_tool(self, tool_name: str, **kwargs) -> Optional[Any]:
         from core.action.tool_registry import registry
