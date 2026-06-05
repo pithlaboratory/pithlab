@@ -607,14 +607,25 @@ Do not overbuild a perfect evaluation platform before the runtime emits stable t
 
 ## 14a. Eval Ops v1 Implementation (Runtime)
 
-На момент v5.2 базовый eval-цикл реализован в виде golden-наборов и smoke gate:
+На момент v5.2 базовый eval-цикл реализован в виде golden-наборов и smoke gate.
 
+**Текущее состояние (v5.2):**
+
+1. **`scripts/run_golden.py`** — выполняет валидацию golden YAML по JSON-схеме и генерирует заглушку `EvaluationRecord v1` через `fake_evaluation_record()`. Реальный runtime (RuntimePlanner, Router, TaskService, Evaluator) **не вызывается**. Результат сохраняется в `output/eval_runs/*.json`.
+
+2. **`scripts/run_single_golden_runtime.py`** — новый, экспериментальный runtime-path. Вызывает реальный LLM через `core.cognition.router.call_llm()`, прогоняет ответ через `core.evolution.evaluator.Evaluator.evaluate_response()`, формирует полный `EvaluationRecord v1` с метаданными (модель, cost, токены). Результат сохраняется в `output/eval_runs/*.json` (совместимый формат).  
+   *Ограничения Phase 1:* не использует RuntimePlanner, trace_id/task_id генерируются локально, initial_context передаётся как system_prompt, а не через Memory.
+
+3. **`scripts/eval_smoke_summary.py`** — агрегирует результаты из `output/eval_runs/*.json` и применяет простые правила: `task_success == "success"`, `policy_violation == False`, `quality_score ≥ threshold`. Работает с обоими источниками (заглушки и реальные записи).
+
+4. **`make eval-smoke-gate`** (`eval-smoke` + `eval-smoke-summary`) — текущий минимальный quality gate. Проверяет заглушки, а не реальный runtime.
+
+**План перехода к runtime-native eval:**
+- Замена `fake_evaluation_record()` на реальный вызов RuntimePlanner с интеграцией TaskService, TraceStore и Evaluator запланирована на v5.3.
 - Golden workflows лежат в `eval/golden/*.yaml` и валидируются схемой `eval/golden/golden_workflow_schema.json`.
-- Каждый golden прогоняется через `scripts/run_golden.py`, который формирует runtime-пейлоад и `EvaluationRecord v1`, сохраняемый в артефакты под `output/eval_runs/*.json`.
-- Скрипт `scripts/eval_smoke_summary.py` агрегирует результаты и применяет простые правила: `task_success == "success"`, `policy_violation == False`, `quality_score ≥ threshold`.
-- Таргет `make eval-smoke-gate` (`eval-smoke` + `eval-smoke-summary`) является текущим минимальным quality gate перед изменениями runtime и интерфейсов.
 
-Eval Ops v1 специально начинается с небольшой, но операциональной поверхности, которая может эволюционировать в более полный EvaluationRun/RegressionRun-пайплайн.
+Eval Ops v1 специально начинается с небольшой, но операциональной поверхности, которая
+может эволюционировать в более полный EvaluationRun/RegressionRun-пайплайн.
 
 ---
 

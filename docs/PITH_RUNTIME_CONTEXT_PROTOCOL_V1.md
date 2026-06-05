@@ -420,3 +420,30 @@ ContextAssembler собирает working context из:
 - MCP/A2A bridging (tool plane).
 
 Любая новая фича, меняющая контекст (новые поля/блоки), должна **сначала** приземляться в `PITH_RUNTIME_CONTEXT_PROTOCOL_V1`, и только потом — в реализацию.
+
+---
+
+## 16. Implementation Status (v5.2)
+
+Протокол описывает **таргетное состояние** (target architecture). Реализация догоняет его по мере развития v5.x. Ниже — статус каждого блока на текущий момент.
+
+| Block | Status | Component |
+|-------|--------|-----------|
+| `subject` | partial | Telegram interface |
+| `task` | partial | TaskService (SQLite) |
+| `workspace` | partial | WorkspaceService (SQLite) |
+| `governance` | not_implemented | — |
+| `context` | not_implemented | — |
+| `artifacts` | partial | ArtifactService (SQLite) |
+| `billing` | not_implemented | — |
+| `runtime` | partial | Router (model_id, mode, cost) |
+
+- `partial` — блок существует в том или ином виде, но не как единый context envelope.
+- `not_implemented` — блок описан в протоколе, но код ещё не написан. Появляется по мере внедрения соответствующих фич (Governance v1, Billing, ContextAssembler).
+
+Планируемый порядок имплементации блоков:
+
+1. **v5.2** — `task`, `workspace`, `runtime` (current)
+2. **v5.3** — `subject` (integration с Telegram/Auth), `governance` (после создания PITH_GOVERNANCE_V1.md)
+3. **v5.4+** — `context` (ContextAssembler + Memory integration), `artifacts` (полный lifecycle)
+4. **v6** — `billing` (после Agent Company monetization)
