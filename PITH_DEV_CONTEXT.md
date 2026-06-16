@@ -31,7 +31,8 @@ Refer: `docs/PITH_KERNEL.md` as the primary identity and kernel contract.[cite:1
 
 - ✅ `v5.2` runtime baseline is stable enough to serve as the current production/runtime baseline for Telegram.
 - ✅ Router, config‑driven model selection, Telegram interface, Orchestrator bridge, Evaluator / FailureMiner / PatchPlanner / SkillCompiler are present architecturally.
-- ✅ Main live interface is **Telegram** (Viktor voice as legacy layer); runtime identity is Pith.
+- ✅ Main live interface is **Telegram**; runtime identity is Pith.
+-   Viktor Vaughn is a legacy persona voice (deprecated); new responses use "Pith:" prefix.
 - ✅ Dashboard and HTTP/API surfaces remain secondary until the runtime core is more reliable.[cite:11][cite:13]
 
 ### TraceStore / Observability

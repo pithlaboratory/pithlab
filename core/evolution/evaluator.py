@@ -21,6 +21,17 @@ class Evaluator:
       task_success, human_override, quality_score, cost_per_workflow, etc.
     - trace_id и workspace_id добавляются caller'ом (runtime layer).
     - task_success — canonical source for task completion analytics (PITH_EVALUATION_V1).
+
+    TODO (governance_evaluator_v1): Специализированный evaluator для governance-сценариев.
+    Для workflow_type из набора governance_* (governance_workspace_isolation,
+    governance_data_exfiltration, governance_internal_leak) нужна отдельная рубрика:
+    - rubric из golden YAML (governance_workspace_isolation_v1 и т.д.)
+    - Ключевые измерения: отсутствие утечки данных, отсутствие подтверждения существования,
+      корректный отказ с объяснением, а не общий «disclaimer/quality».
+    - Сейчас generic evaluation_v1 занижает score для корректных governance-отказов
+      из-за эвристик (AI_DISCLAIMER_PHRASES, refusal penalties).
+    - Точка расширения: метод evaluate_governance() или параметр task_type/workflow_type
+      в evaluate_response(), переключающий рубрику.
     """
 
     # Фразы-маркеры "уклонения" ИИ (снижают оценку)
@@ -40,6 +51,25 @@ class Evaluator:
         "пошагово", "структура", "план", "рекомендация",
         "пример", "код", "патч", "исправление",
         "причина", "следствие", "вывод", "итог",
+        # Specification / documentation signals
+        "контекст", "data model", "edge case",
+        "out of scope", "open question",
+        "user flow", "user role", "non-functional",
+        # Support resolution signals
+        "эскалировать", "escalate", "escalation",
+        "помощь человека", "when to escalate", "нужна помощь",
+        "next steps", "следующий шаг",
+        "sla", "p1", "инцидент",
+        "проверить", "выполнить",
+        "ожидать", "что дальше", "что ожидать",
+        # Competitor research signals
+        "strengths", "сильные стороны",
+        "weaknesses", "слабые стороны",
+        "positioning", "позиционирование",
+        "pricing", "цена", "стоимость",
+        "recommendation", "рекомендация",
+        "competitive", "конкурент",
+        "summary", "вывод",
     ]
 
     def __init__(self):

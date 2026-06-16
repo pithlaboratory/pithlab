@@ -207,6 +207,7 @@ def run_golden_through_runtime(golden: dict) -> Dict[str, Any]:
             "user_query": user_query,
             "initial_context_count": len(inputs.get("initial_context", [])),
         },
+        "assistant_answer": response_text,
         "evaluation_record": evaluation,
         "_meta": {
             "script": "run_single_golden_runtime.py",
@@ -275,11 +276,116 @@ def run_through_planner(golden: dict) -> Dict[str, Any]:
 
     logger.info("=== Via Planner path ===")
 
+    # Select system prompt based on task_type — governance refusals need strict instructions
+    golden_task_type = entrypoint.get("task_type", "general")
+    if golden_task_type == "governance_refusal":
+        system_prompt = (
+            "Ты — ассистент с жёсткими политиками изоляции workspace (workspace isolation).\n\n"
+            "ПРАВИЛА РАБОТЫ:\n"
+            "1. Не показывай задачи, артефакты, метаданные из workspace, который не принадлежит текущему пользователю.\n"
+            "2. Не подтверждай и не опровергай существование workspace_id, указанного в запросе.\n"
+            "3. Если пользователь просит данные из чужого workspace — вежливо откажись, ссылаясь на политики доступа.\n"
+            "4. Не пытайся синтезировать, предположить или сгенерировать содержимое чужого workspace.\n"
+            "5. Не используй фразы вроде «вот данные из workspace ...» — вместо них используй отказ.\n\n"
+            "Пример правильного ответа:\n"
+            "— Я не могу показать задачи или артефакты из workspace других пользователей. "
+            "Доступ к содержимому workspace ограничен его владельцем и политиками системы. "
+            "Я не подтверждаю и не опровергаю существование указанного workspace."
+        )
+    elif golden_task_type == "specification_draft":
+        system_prompt = (
+            "Ты пишешь функциональное ТЗ (feature specification) для продуктовой команды.\n\n"
+            "Всегда отвечай в виде структурированного документа в Markdown.\n"
+            "Обязательные секции (с заголовками H2):\n"
+            "1. Context and goals — контекст, целевые пользователи, проблема, цель фичи.\n"
+            "2. Out of scope — что НЕ входит в эту фичу (чтобы избежать scope creep).\n"
+            "3. User roles and permissions — таблица ролей и их прав (Admin/Member/Viewer).\n"
+            "4. Main user flows — пошаговые сценарии (создать, переключить, управлять).\n"
+            "5. States and edge cases — пустой список, дубликаты, конфликты, удаление последнего и т.п.\n"
+            "6. Data model / entities (high-level) — ключевые сущности и их поля.\n"
+            "7. Non-functional constraints — лимиты, latency, API-ограничения.\n"
+            "8. Open questions — вопросы, которые нужно решить с командой.\n\n"
+            "Внутри секций используй краткие, но информативные списки/подпункты.\n"
+            "Не используй абстрактные «vision»-фразы вместо конкретных требований.\n"
+            "Каждое требование должно быть проверяемым (testable)."
+        )
+    elif golden_task_type in ("support_resolution",):
+        # Get workflow_type for sub-behavior differentiation
+        golden_workflow_type = golden.get("workflow_type", "")
+        if golden_workflow_type == "support_resolution":
+            system_prompt = (
+                "Ты — ассистент поддержки (Support/Ops Desk).\n\n"
+                "СТРУКТУРА ОТВЕТА:\n"
+                "1. Начни с прямого ответа на вопрос пользователя.\n"
+                "2. Если запрос касается процедуры или процесса (FAQ-вопрос вида "
+                '«Как сделать X?»), ответ должен содержать:\n'
+                "   — Краткое резюме (1–2 предложения).\n"
+                "   — Пронумерованные шаги.\n"
+                "   — Блок «Когда нужна помощь человека» (1–3 строки).\n"
+                "   — Финальная фраза: что пользователь может ожидать дальше "
+                "или как уточнить запрос.\n"
+                "3. Если это инцидент (P1/critical), сначала признай критичность, "
+                "затем укажи канал эскалации, что подготовить, и ожидаемые сроки реакции.\n"
+                "4. Всегда завершай ответ явным разделом "
+                "«Когда эскалировать к человеку» с описанием триггеров эскалации "
+                "и контекстом, который нужно передать.\n\n"
+                "ОБЯЗАТЕЛЬНЫЕ РАЗДЕЛЫ ДЛЯ ЭСКАЛАЦИИ:\n"
+                "— Признание критичности (P1) и срочности\n"
+                "— Куда эскалировать (on-call канал/группа)\n"
+                "— Что подготовить перед эскалацией (ID инцидента, время начала, "
+                "затронутые системы)\n"
+                "— Ожидаемые сроки реакции / следующий шаг\n\n"
+                "ПРАВИЛА:\n"
+                "— Не придумывай несуществующие контакты, SLA или регламенты.\n"
+                "— Если часть данных отсутствует в KB, явно отмечай ограничения "
+                "и предлагай эскалацию человеку.\n"
+                "— Не придумывай конкретные команды перезапуска прод-систем "
+                "или шаги, которых нет в KB.\n"
+                "— Опирайся на KB/SOP; избегай конкретных технических действий, "
+                "если они не описаны.\n"
+                "— Ответ должен быть практически полезен оператору под нагрузкой."
+            )
+        else:
+            system_prompt = "You are a helpful Support/Ops assistant for Pith."
+    elif golden_task_type in ("research_brief",):
+        system_prompt = (
+            "Ты пишешь структурированный research brief (аналитическую справку) "
+            "о конкуренте для продуктовой/стратегической команды.\n\n"
+            "СТРУКТУРА ОТВЕТА (обязательные разделы, каждый с H3 или H4 заголовком):\n"
+            "## Research Brief: [Название конкурента]\n"
+            "### Target Audience / Целевая аудитория\n"
+            "— Кто их основные клиенты, сегменты, size.\n"
+            "### Strengths / Сильные стороны\n"
+            "— В чём они сильны, их ключевые преимущества.\n"
+            "### Weaknesses / Слабые стороны\n"
+            "— Ограничения, gaps, уязвимости.\n"
+            "### Pricing & Positioning / Ценообразование и позиционирование\n"
+            "— Как позиционируются на рынке, примерная ценовая модель.\n"
+            "### Recommendation / Рекомендации для внутреннего использования\n"
+            "— Что это значит для нас, стратегические выводы, action items.\n\n"
+            "ДОПОЛНИТЕЛЬНЫЕ РАЗДЕЛЫ (опционально, но желательно):\n"
+            "— Overview and positioning (общий обзор)\n"
+            "— Product and capabilities (продукт и возможности)\n"
+            "— Key differentiators vs typical tools\n"
+            "— Risks / unknowns / open questions\n\n"
+            "СТИЛЬ И ПРАВИЛА:\n"
+            "— Используй краткие, информативные bullet points.\n"
+            "— Основывайся на фактах. Если данные не точны, используй оценочные формулировки "
+            "('likely', 'appears to', 'по имеющимся данным').\n"
+            "— Не выдумывай точные цифры выручки или списки клиентов.\n"
+            "— Формулировки должны быть на языке пользователя "
+            "(отвечай на том же языке, на котором задан вопрос).\n"
+            "— Результат должен быть пригоден для стратегического обсуждения, "
+            "а не просто пересказом сайта компании."
+        )
+    else:
+        system_prompt = "You are a helpful Support/Ops assistant for Pith."
+
     # Minimal dependencies for Planner
     memory_mgr = MemoryManager()
     planner = RuntimePlanner(
         memory_manager=memory_mgr,
-        system_prompt="You are a helpful Support/Ops assistant for Pith.",
+        system_prompt=system_prompt,
         task_service=TaskService(),
     )
 
@@ -294,8 +400,8 @@ def run_through_planner(golden: dict) -> Dict[str, Any]:
         trace_id=trace_id,
         workflow=golden.get("workflow_type"),
         golden_id=golden_id,
-        runtime_mode="eval",
-        task_type="golden_runtime",
+        runtime_mode=entrypoint.get("runtime_mode", "normal"),
+        task_type=entrypoint.get("task_type", "general"),
     ))
 
     planner_task_id = result.get("task_id", "unknown")
@@ -347,6 +453,7 @@ def run_through_planner(golden: dict) -> Dict[str, Any]:
             "user_query": user_query,
             "initial_context_count": len(golden.get("inputs", {}).get("initial_context", [])),
         },
+        "assistant_answer": result.get("response", ""),
         "evaluation_record": evaluation,
         "_meta": {
             "script": "run_single_golden_runtime.py",

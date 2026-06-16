@@ -166,7 +166,7 @@ The following structural gaps have already been closed and are considered produc
 ---
 
 ## Invariants
-- **Viktor in Telegram stays live throughout.** Every change is a minimal safe patch.
+- **Telegram interface (previously branded "Viktor") stays live throughout.** Every change is a minimal safe patch.
 - **No phase involves a rewrite** of the router, planner, or memory manager internals.
 - **Production stability is not traded** for any of this.
 - See `PITH_DEV_CONTEXT.md` (§5–8) for canonical development rules and identity guardrails.

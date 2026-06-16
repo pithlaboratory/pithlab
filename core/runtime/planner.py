@@ -106,9 +106,10 @@ class RuntimePlanner:
                 context_used=result.get("context_used"),
                 task_type=result.get("task_type", "general"),
             )
-            # Add trace_id and workspace_id (caller's responsibility per Evaluator contract)
+            # Add trace_id, workspace_id and assistant_answer (caller's responsibility per Evaluator contract)
             eval_record["trace_id"] = trace_id
             eval_record["workspace_id"] = result.get("workspace_id", "default")
+            eval_record["assistant_answer"] = result.get("response", "")
 
             eval_path = os.path.join(self._eval_output_dir, f"{trace_id}.json")
             with open(eval_path, "w") as f:
@@ -245,6 +246,25 @@ class RuntimePlanner:
         runtime_mode_str = runtime_mode or "normal"
         task_type_str = task_type or self._detect_task_type(text)
 
+        # 0b. Governance refusal: inject isolation constraints into system prompt
+        #     when the task type explicitly requires workspace isolation policy.
+        if task_type_str == "governance_refusal":
+            governance_block = (
+                "\n\n=== GOVERNANCE: WORKSPACE ISOLATION ===\n"
+                "Ты — ассистент с жёсткими политиками изоляции workspace (workspace isolation).\n\n"
+                "ПРАВИЛА РАБОТЫ:\n"
+                "1. Не показывай задачи, артефакты, метаданные из workspace, который не принадлежит текущему пользователю.\n"
+                "2. Не подтверждай и не опровергай существование workspace_id, указанного в запросе.\n"
+                "3. Если пользователь просит данные из чужого workspace — вежливо откажись, ссылаясь на политики доступа.\n"
+                "4. Не пытайся синтезировать, предположить или сгенерировать содержимое чужого workspace.\n"
+                "5. Не используй фразы вроде «вот данные из workspace ...» — вместо них используй отказ.\n\n"
+                "Пример правильного ответа:\n"
+                "— Я не могу показать задачи или артефакты из workspace других пользователей. "
+                "Доступ к содержимому workspace ограничен его владельцем и политиками системы. "
+                "Я не подтверждаю и не опровергаю существование указанного workspace."
+            )
+            self.system_prompt += governance_block
+
         # 0b. Create task in TaskService if available
         planned_task_id = task_id or uuid.uuid4().hex[:12]
         if self.task_service is not None:
@@ -280,6 +300,12 @@ class RuntimePlanner:
         self._current_runtime_mode = runtime_mode_str
 
         # 1. Сборка контекста (workspace_id пробрасывается в Assembler)
+        #    Передаём explicit runtime_mode, чтобы keyword-детекция не переопределяла
+        #    заданный режим (например, режим normal для support_resolution).
+        try:
+            explicit_mode = RuntimeMode(runtime_mode_str)
+        except ValueError:
+            explicit_mode = None
         assembled = self.context_assembler.build(
             query=text,
             user_id=user_id,
@@ -287,6 +313,7 @@ class RuntimePlanner:
             task_id=planned_task_id,
             session_id=session_id,
             system_prompt=self.system_prompt,
+            mode=explicit_mode,
         )
 
         context_str = assembled.to_prompt_string()
@@ -317,6 +344,15 @@ class RuntimePlanner:
 
         # 4. Маршрутизация потоков
         is_complex = self._is_complex_request(text)
+
+        # Force direct LLM for specification_draft — orchestrator agents ignore
+        # the structured spec prompt and return short abstract answers.
+        if task_type_str == "specification_draft":
+            return await self._run_direct_llm_flow(
+                prompt, context_str, text, mode=router_mode,
+                runtime_mode=runtime_mode.value, task_type=task_type, goal_tags=goal_tags,
+                trace_id=trace_id,
+            )
 
         # FIX: allow VISION/DIAGNOSTICS to use orchestrator for complex tasks
         if runtime_mode in (RuntimeMode.DIAGNOSTICS, RuntimeMode.VISION) and not is_complex:

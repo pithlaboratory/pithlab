@@ -1,4 +1,6 @@
-.PHONY: eval-smoke eval-smoke-summary eval-smoke-gate trace-summary eval-runtime-summary eval-runtime-gate
+.PHONY: eval-smoke eval-smoke-summary eval-smoke-gate \
+        trace-summary \
+        eval-runtime-golden eval-runtime-summary eval-runtime-gate
 
 eval-smoke:
 	python scripts/run_golden.py eval/golden/research_competitor_brief_v1.yaml
@@ -20,8 +22,17 @@ eval-smoke-gate:
 trace-summary:
 	python scripts/trace_summary.py
 
+# Новый таргет: прогон всех golden'ов через RuntimePlanner
+eval-runtime-golden:
+	@echo "Running all golden evals via Planner..."
+	@python scripts/run_all_golden_via_planner.py
+
+# Сводка по runtime-eval'ам (как и раньше)
 eval-runtime-summary:
 	python scripts/eval_runtime_summary.py
 
+# Гейт: сначала прогон через Planner, затем сводка + gate-логика
 eval-runtime-gate:
+	$(MAKE) eval-runtime-golden
+	$(MAKE) eval-runtime-summary
 	python scripts/eval_runtime_gate.py

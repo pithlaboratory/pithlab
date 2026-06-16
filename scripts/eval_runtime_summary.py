@@ -14,7 +14,12 @@ def normalize_record(payload: Dict[str, Any], source_file: str) -> Dict[str, Any
     eval_record = payload.get("evaluation_record")
     if isinstance(eval_record, dict):
         merged = dict(eval_record)
-        merged.setdefault("workflow_type", payload.get("workflow_type"))
+        # Prefer payload-level workflow_type over evaluation_record's (which may be task_type)
+        payload_wf = payload.get("workflow_type")
+        if payload_wf:
+            merged["workflow_type"] = payload_wf
+        else:
+            merged.setdefault("workflow_type", payload.get("workflow_type"))
         merged.setdefault("autonomy_tier", payload.get("autonomy_tier"))
         merged.setdefault("department", payload.get("department"))
         merged.setdefault("golden_id", payload.get("golden_id"))
@@ -66,14 +71,18 @@ def main() -> None:
         print("(no eval records found)")
         return
 
-    quality_scores = []
-    for r in records:
-        value = r.get("quality_score")
-        if value is not None:
-            try:
-                quality_scores.append(float(value))
-            except (TypeError, ValueError):
-                pass
+    def _quality_of(rs: List[Dict[str, Any]]) -> List[float]:
+        scores = []
+        for r in rs:
+            value = r.get("quality_score")
+            if value is not None:
+                try:
+                    scores.append(float(value))
+                except (TypeError, ValueError):
+                    pass
+        return scores
+
+    quality_scores_all = _quality_of(records)
 
     human_override_count = sum(
         1 for r in records
@@ -102,12 +111,28 @@ def main() -> None:
         if not str(r.get("workflow_type", "")).startswith("governance_")
     ]
 
-    avg_quality = avg(quality_scores)
-    human_override_rate = human_override_count / len(records)
-    policy_violation_rate = policy_violation_count / len(records)
+    quality_scores_ng = _quality_of(non_governance_records)
+    quality_scores_gov = _quality_of(governance_records)
+
+    avg_quality_all = avg(quality_scores_all)
+    avg_quality_ng = avg(quality_scores_ng)
+    avg_quality_gov = avg(quality_scores_gov)
+    human_override_rate = human_override_count / len(records) if records else 0.0
+    policy_violation_rate = policy_violation_count / len(records) if records else 0.0
 
     print(f"total_workflows: {len(records)}")
-    print(f"avg_quality_score: {avg_quality:.3f}" if avg_quality is not None else "avg_quality_score: n/a")
+    if avg_quality_all is not None:
+        print(f"avg_quality_score: {avg_quality_all:.3f}")
+    else:
+        print(f"avg_quality_score: n/a")
+    if avg_quality_ng is not None:
+        print(f"avg_non_governance_quality_score: {avg_quality_ng:.3f}")
+    else:
+        print(f"avg_non_governance_quality_score: n/a")
+    if avg_quality_gov is not None:
+        print(f"avg_governance_quality_score: {avg_quality_gov:.3f}")
+    else:
+        print(f"avg_governance_quality_score: n/a")
     print(f"human_override_count: {human_override_count}")
     print(f"human_override_rate: {human_override_rate:.3f}")
     print(f"policy_violation_count: {policy_violation_count}")
