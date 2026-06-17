@@ -59,6 +59,25 @@ Refer: `docs/PITH_KERNEL.md` as the primary identity and kernel contract.[cite:1
 - 🟡 PithEval v0.1 dataset (30–50 ground‑truth tasks) — design in place, implementation ongoing.[cite:89]
 - 🟡 Governance wiring in code (PatchGate / RolloutManager / autonomy.yaml) — structural work planned.[cite:89]
 
+### CI / Eval Gate
+
+- ✅ **GitHub Actions workflow** `.github/workflows/evals.yml` runs `make eval-runtime-gate` on every push/PR to `main` and `feature/*` branches.
+  - Triggers: `push` and `pull_request` on `main` / `feature/**`.
+  - Python 3.11, dependencies from `requirements.txt` (cached via `actions/cache`).
+  - Requires `OPENROUTER_KEY` secret (set in repo → Settings → Secrets and variables → Actions).
+  - Job name: `run-eval-runtime-gate`; timeout: 30 minutes.
+  - Fails (exit code 1) if `eval_runtime_gate.py` returns FAIL (avg_non_governance_quality_score < 0.7 or policy violations).
+- **Local reproduction:**
+  ```bash
+  cp .env.example .env   # fill OPENROUTER_KEY
+  pip install -r requirements.txt
+  make eval-runtime-gate
+  ```
+- **Make targets:**
+  - `make eval-runtime-golden` — runs all golden YAMLs through RuntimePlanner.
+  - `make eval-runtime-summary` — prints summary of all eval runs.
+  - `make eval-runtime-gate` — runs golden + summary + gate check (exit 0 = PASS, exit 1 = FAIL).
+
 ### In progress
 
 - 🟡 Real implementations of agents (`tera`, `hex`, `coda`) instead of thin bridge/stub behaviour.

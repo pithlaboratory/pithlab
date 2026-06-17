@@ -1,0 +1,67 @@
+# Pith v5 — Eval Runtime Gate
+#
+# Runs all golden evals through RuntimePlanner, computes summary,
+# and enforces quality gate on every push/PR to main and feature/* branches.
+#
+# Trigger: push / pull_request on main and feature/*
+# Python: 3.11
+# Dependencies: pip install -r requirements.txt
+# Gate: make eval-runtime-gate (exit code 0 = PASS, non-zero = FAIL)
+#
+# Secrets:
+#   OPENROUTER_KEY — required for LLM calls during eval runs
+#
+# Local reproduction:
+#   cp .env.example .env   # fill OPENROUTER_KEY
+#   pip install -r requirements.txt
+#   make eval-runtime-gate
+
+name: Eval Runtime Gate
+
+on:
+  push:
+    branches:
+      - main
+      - feature/**
+  pull_request:
+    branches:
+      - main
+      - feature/**
+
+jobs:
+  run-eval-runtime-gate:
+    name: Run eval-runtime-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        id: pip-cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create .env with OPENROUTER_KEY
+        run: |
+          echo "OPENROUTER_KEY=${{ secrets.OPENROUTER_KEY }}" > .env
+          echo "PITH_ENV=ci" >> .env
+
+      - name: Run eval-runtime-gate
+        run: |
+          make eval-runtime-gate
