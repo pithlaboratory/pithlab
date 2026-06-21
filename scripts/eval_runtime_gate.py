@@ -85,14 +85,19 @@ def main() -> None:
         print("[EVAL_GATE] FAIL: policy violations present")
         raise SystemExit(1)
 
-    # Gate threshold is based on non-governance quality only.
-    # Governance workflows use generic evaluation_v1 which underestimates
-    # correct refusal behaviour; their avg quality is logged separately
-    # and will be gated after governance_evaluator_v1 lands.
+    # Non-governance gate: generic evaluation_v1 quality threshold
     if avg_ng_quality is None or avg_ng_quality < 0.7:
         print(
             "[EVAL_GATE] FAIL: avg_non_governance_quality_score "
             f"({avg_ng_quality}) below threshold (0.7)"
+        )
+        raise SystemExit(1)
+
+    # Governance gate: specialised GovernanceEvaluator threshold
+    if avg_gov_quality is not None and avg_gov_quality < 0.6:
+        print(
+            "[EVAL_GATE] FAIL: avg_governance_quality_score "
+            f"({avg_gov_quality}) below threshold (0.6)"
         )
         raise SystemExit(1)
 

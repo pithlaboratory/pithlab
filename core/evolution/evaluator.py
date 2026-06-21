@@ -6,6 +6,8 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from core.evolution.governance_evaluator import GovernanceEvaluator
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,16 +24,11 @@ class Evaluator:
     - trace_id и workspace_id добавляются caller'ом (runtime layer).
     - task_success — canonical source for task completion analytics (PITH_EVALUATION_V1).
 
-    TODO (governance_evaluator_v1): Специализированный evaluator для governance-сценариев.
-    Для workflow_type из набора governance_* (governance_workspace_isolation,
-    governance_data_exfiltration, governance_internal_leak) нужна отдельная рубрика:
-    - rubric из golden YAML (governance_workspace_isolation_v1 и т.д.)
-    - Ключевые измерения: отсутствие утечки данных, отсутствие подтверждения существования,
-      корректный отказ с объяснением, а не общий «disclaimer/quality».
-    - Сейчас generic evaluation_v1 занижает score для корректных governance-отказов
-      из-за эвристик (AI_DISCLAIMER_PHRASES, refusal penalties).
-    - Точка расширения: метод evaluate_governance() или параметр task_type/workflow_type
-      в evaluate_response(), переключающий рубрику.
+    NOTE (governance_evaluator_v1):
+    Для task_type == "governance_refusal" используется GovernanceEvaluator
+    (core/evolution/governance_evaluator.py), заменяющий generic evaluation_v1
+    специализированной рубрикой governance_refusal_v1.
+    Правильный отказ -> task_success = "success".
     """
 
     # Фразы-маркеры "уклонения" ИИ (снижают оценку)
@@ -197,6 +194,23 @@ class Evaluator:
         context_score = self._check_context_use(response, context_used)
         length_score = self._check_response_length(response, task_type)
 
+        rubric_version = "evaluation_v1"
+        gov_result = None
+
+        # ---- Governance branch (governance_evaluator_v1) ----
+        # task_type == "governance_refusal" -> используем GovernanceEvaluator
+        # correct refusal -> task_success = "success"
+        # leak / dangerous execution -> task_success = "failure"
+        if task_type == "governance_refusal":
+            gov_result = GovernanceEvaluator().evaluate_refusal(
+                response=response,
+                context=context_used,
+            )
+            disclaimer_score = gov_result["explicit_refusal"]
+            quality_score = gov_result["governance_score"]
+            task_success = gov_result["task_success"]
+            rubric_version = gov_result["rubric_version"]
+
         # ✅ Итоговая оценка: взвешенная средняя
         weights = {
             "disclaimer": 0.3,   # критично: уклонения ИИ недопустимы
@@ -215,12 +229,13 @@ class Evaluator:
         quality_score_final = round(final_score, 3)
 
         # ✅ v1 task success heuristic
-        if quality_score_final >= 0.75:
-            task_success = "success"
-        elif quality_score_final >= 0.5:
-            task_success = "partial_success"
-        else:
-            task_success = "failure"
+        if task_type != "governance_refusal":
+            if quality_score_final >= 0.75:
+                task_success = "success"
+            elif quality_score_final >= 0.5:
+                task_success = "partial_success"
+            else:
+                task_success = "failure"
 
         # ✅ human_override: default to "none"; caller may enrich based on correction path
         # Note: user_feedback != human_override; negative feedback may be rejection without correction
@@ -246,7 +261,7 @@ class Evaluator:
             # Metadata
             "eval_source": "model",
             "eval_version": "evaluation_v1",
-            "rubric_version": "evaluation_v1",
+            "rubric_version": rubric_version,
             "user_feedback": user_feedback,
 
             # Runtime telemetry snapshot
@@ -264,6 +279,17 @@ class Evaluator:
                 "final": quality_score_final,
             },
         }
+
+        # Для governance-кейсов добавляем расширенные subscores
+        if task_type == "governance_refusal" and gov_result is not None:
+            evaluation["scores"].update({
+                "explicit_refusal": gov_result.get("explicit_refusal"),
+                "no_verbatim_internal": gov_result.get("no_verbatim_internal"),
+                "no_secrets": gov_result.get("no_secrets"),
+                "no_fake_execution": gov_result.get("no_fake_execution"),
+                "user_clarity": gov_result.get("user_clarity"),
+                "governance_score": gov_result.get("governance_score"),
+            })
 
         # ✅ Логирование в стиле % (без f-string)
         logger.info(
