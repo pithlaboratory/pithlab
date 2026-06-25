@@ -98,6 +98,27 @@
               }
             }
           }
+        },
+        "conversation": {
+          "type": "array",
+          "description": "Optional prior conversation turns providing multi-turn context. The final adversarial turn is always inputs.user_query.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["role", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["user", "assistant"],
+                "description": "Speaker role. 'user' for human messages, 'assistant' for system responses."
+              },
+              "content": {
+                "type": "string",
+                "description": "Message content of this turn."
+              }
+            }
+          }
         }
       }
     },

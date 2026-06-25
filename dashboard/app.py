@@ -123,6 +123,20 @@ def normalize_eval_record(payload: Dict[str, Any], source_file: str) -> Dict[str
         merged.setdefault("department", payload.get("department"))
         merged.setdefault("golden_id", payload.get("golden_id"))
         merged["_source_file"] = source_file
+        # Extract multi-turn metadata from _meta
+        meta = payload.get("_meta") or {}
+        merged.setdefault("multi_turn", meta.get("multi_turn", False))
+        # Extract conversation_turn_count from payload.payload
+        inner_payload = payload.get("payload") or {}
+        merged.setdefault("conversation_turn_count", inner_payload.get("conversation_turn_count"))
+        # Extract governance dimensions from scores
+        scores = eval_record.get("scores") or {}
+        merged.setdefault("governance_score", scores.get("governance_score"))
+        merged.setdefault("explicit_refusal", scores.get("explicit_refusal"))
+        merged.setdefault("no_verbatim_internal", scores.get("no_verbatim_internal"))
+        merged.setdefault("no_secrets", scores.get("no_secrets"))
+        merged.setdefault("no_fake_execution", scores.get("no_fake_execution"))
+        merged.setdefault("user_clarity", scores.get("user_clarity"))
         return merged
     payload = dict(payload)
     payload["_source_file"] = source_file
@@ -763,10 +777,49 @@ with tab5:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-label">Evaluation</div><div class="section-title">Eval runtime summary</div><div class="section-copy">Normalized from output/eval_runs, including evaluation_record payloads. This section tracks quality, override pressure, and workflow coverage across current golden runs.</div>', unsafe_allow_html=True)
     if not eval_df.empty:
-        cols = [c for c in ["golden_id", "workflow_type", "task_type", "task_success", "human_override", "quality_score", "policy_violation", "autonomy_tier", "eval_version", "_source_file"] if c in eval_df.columns]
-        st.dataframe(eval_df[cols], use_container_width=True, hide_index=True)
+        # Filters row: 3 columns for compact layout
+        fcol1, fcol2, fcol3 = st.columns(3)
+        with fcol1:
+            show_multi_only = st.checkbox("Multi-turn only", value=False, key="eval_multi_filter")
+        with fcol2:
+            model_options = sorted(eval_df["model"].dropna().unique()) if "model" in eval_df.columns else []
+            selected_models = st.multiselect("Model", options=model_options, key="eval_model_filter")
+        with fcol3:
+            wf_options = sorted(eval_df["workflow_type"].dropna().unique()) if "workflow_type" in eval_df.columns else []
+            selected_wf = st.multiselect("Workflow type", options=wf_options, key="eval_wf_filter")
+
+        # Apply filters in order: multi-turn → model → workflow_type
+        display_df = eval_df.copy()
+        if show_multi_only and "multi_turn" in display_df.columns:
+            display_df = display_df[display_df["multi_turn"] == True]
+        if selected_models and "model" in display_df.columns:
+            display_df = display_df[display_df["model"].isin(selected_models)]
+        if selected_wf and "workflow_type" in display_df.columns:
+            display_df = display_df[display_df["workflow_type"].isin(selected_wf)]
+
+        cols = [c for c in [
+            "golden_id", "workflow_type", "task_type", "task_success",
+            "human_override", "quality_score", "governance_score",
+            "policy_violation", "multi_turn", "conversation_turn_count",
+            "autonomy_tier", "eval_version", "_source_file",
+        ] if c in display_df.columns]
+        st.dataframe(display_df[cols], use_container_width=True, hide_index=True)
     else:
         st.info("No eval records found yet in output/eval_runs.")
+
+    # Governance breakdown block
+    st.markdown("#### Governance score breakdown")
+    gov_df = eval_df[eval_df["workflow_type"].str.startswith("governance_", na=False)] if not eval_df.empty else pd.DataFrame()
+    if not gov_df.empty:
+        gov_cols = [c for c in [
+            "golden_id", "governance_score", "explicit_refusal",
+            "no_verbatim_internal", "no_secrets", "no_fake_execution",
+            "user_clarity", "multi_turn", "conversation_turn_count",
+        ] if c in gov_df.columns]
+        st.dataframe(gov_df[gov_cols], use_container_width=True, hide_index=True)
+    else:
+        st.info("No governance evaluation records found yet.")
+
     latest_eval_files = sorted([p.name for p in EVAL_DIR.glob("*.json")], reverse=True)[:8] if EVAL_DIR.exists() else []
     if latest_eval_files:
         st.markdown("#### Recent eval files")
