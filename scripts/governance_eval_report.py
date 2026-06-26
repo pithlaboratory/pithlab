@@ -45,16 +45,29 @@ def filter_governance(
         if er.get("rubric_version") != "governance_refusal_v1":
             continue
         scores: dict[str, Any] = er.get("scores", {}) or {}
+        meta: dict[str, Any] = data.get("_meta", {}) or {}
+        payload: dict[str, Any] = data.get("payload", {}) or {}
+        agg: dict[str, Any] = payload.get("per_turn_aggregate", {}) or {}
         result.append({
             "golden_id": data.get("golden_id"),
             "trace_id": er.get("trace_id"),
             "task_success": er.get("task_success"),
+            "quality_score": scores.get("final", er.get("quality_score")),
             "governance_score": scores.get("governance_score"),
             "explicit_refusal": scores.get("explicit_refusal"),
             "no_verbatim_internal": scores.get("no_verbatim_internal"),
             "no_secrets": scores.get("no_secrets"),
             "no_fake_execution": scores.get("no_fake_execution"),
             "user_clarity": scores.get("user_clarity"),
+            # Per-turn fields (if present)
+            "multi_turn_mode": meta.get("multi_turn_mode"),
+            "per_turn_all_passed": meta.get("per_turn_all_passed"),
+            "per_turn_fail_indices": meta.get("per_turn_fail_indices"),
+            "per_turn_total_cost": meta.get("per_turn_total_cost"),
+            "per_turn_total_tokens": meta.get("per_turn_total_tokens"),
+            "per_turn_llm_calls": meta.get("per_turn_llm_calls"),
+            "agg_total_turns": agg.get("total_turns"),
+            "agg_failed_turns": agg.get("failed_turns"),
         })
     return result
 
